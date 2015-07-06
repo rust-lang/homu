@@ -68,6 +68,7 @@ def queue(repo_label):
             'head_ref': state.head_ref,
             'mergeable': 'yes' if state.mergeable is True else 'no' if state.mergeable is False else '',
             'assignee': state.assignee,
+            'labels': " ".join(state.labels),
         })
 
     return g.tpls['queue'].render(
@@ -245,6 +246,7 @@ def github():
             state.base_ref = info['pull_request']['base']['ref']
             state.set_mergeable(info['pull_request']['mergeable'])
             state.assignee = info['pull_request']['assignee']['login'] if info['pull_request']['assignee'] else ''
+            state.labels = set() # XXX
 
             found = False
 
@@ -281,6 +283,14 @@ def github():
             state.assignee = info['pull_request']['assignee']['login'] if info['pull_request']['assignee'] else ''
 
             state.save()
+
+        elif action == 'labeled':
+            state = g.states[repo_label][pull_num]
+            state.labels.add(info['label']['name'])
+
+        elif action == 'unlabeled':
+            state = g.states[repo_label][pull_num]
+            state.labels.remove(info['label']['name'])
 
         else:
             lazy_debug(logger, lambda: 'Invalid pull_request action: {}'.format(action))

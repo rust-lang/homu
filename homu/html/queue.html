@@ -59,6 +59,7 @@
                     <th>Approved by</th>
                     <th>Mergeable</th>
                     <th>Assignee</th>
+                    <th>Labels</th>
                 </tr>
             </thead>
 
@@ -75,6 +76,7 @@
                     <td>{{state.approved_by}}</td>
                     <td class="{{state.mergeable}}">{{state.mergeable}}</td>
                     <td>{{state.assignee}}</td>
+                    <td>{{state.labels}}</td>
                 </tr>
                 {% endfor %}
             </tbody>
