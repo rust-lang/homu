@@ -29,6 +29,7 @@ STATUS_TO_PRIORITY = {
 INTERRUPTED_BY_HOMU_FMT = 'Interrupted by Homu ({})'
 INTERRUPTED_BY_HOMU_RE = re.compile(r'Interrupted by Homu \((.+?)\)')
 
+
 @contextmanager
 def buildbot_sess(repo_cfg):
     sess = requests.Session()
@@ -43,9 +44,12 @@ def buildbot_sess(repo_cfg):
     sess.get(repo_cfg['buildbot']['url'] + '/logout', allow_redirects=False)
 
 db_query_lock = Lock()
+
+
 def db_query(db, *args):
     with db_query_lock:
         db.execute(*args)
+
 
 class PullReqState:
     num = 0
@@ -214,17 +218,20 @@ class PullReqState:
             if self.get_repo().merge(self.base_ref, self.head_sha, msg):
                 self.rebased = True
 
+
 def sha_cmp(short, full):
     return len(short) >= 4 and short == full[:len(short)]
 
+
 def sha_or_blank(sha):
     return sha if re.match(r'^[0-9a-f]+$', sha) else ''
+
 
 def parse_commands(body, username, repo_cfg, state, my_username, db, *, realtime=False, sha=''):
     try_only = False
     if username not in repo_cfg['reviewers'] and username != my_username:
         if username == state.delegate:
-            pass # Allow users who have been delegated review powers
+            pass  # Allow users who have been delegated review powers
         elif username in repo_cfg.get('try_users', []):
             try_only = True
         else:
@@ -238,11 +245,12 @@ def parse_commands(body, username, repo_cfg, state, my_username, db, *, realtime
 
         if word == 'r+' or word.startswith('r='):
             if try_only:
-                if realtime: state.add_comment(':key: Insufficient privileges')
+                if realtime:
+                    state.add_comment(':key: Insufficient privileges')
                 continue
 
-            if not sha and i+1 < len(words):
-                cur_sha = sha_or_blank(words[i+1])
+            if not sha and i + 1 < len(words):
+                cur_sha = sha_or_blank(words[i + 1])
             else:
                 cur_sha = sha
 
@@ -277,7 +285,8 @@ def parse_commands(body, username, repo_cfg, state, my_username, db, *, realtime
 
         elif word == 'r-':
             if try_only:
-                if realtime: state.add_comment(':key: Insufficient privileges')
+                if realtime:
+                    state.add_comment(':key: Insufficient privileges')
                 continue
 
             state.approved_by = ''
@@ -285,20 +294,24 @@ def parse_commands(body, username, repo_cfg, state, my_username, db, *, realtime
             state.save()
 
         elif word.startswith('p='):
-            try: state.priority = int(word[len('p='):])
-            except ValueError: pass
+            try:
+                state.priority = int(word[len('p='):])
+            except ValueError:
+                pass
 
             state.save()
 
         elif word.startswith('delegate='):
             if try_only:
-                if realtime: state.add_comment(':key: Insufficient privileges')
+                if realtime:
+                    state.add_comment(':key: Insufficient privileges')
                 continue
 
             state.delegate = word[len('delegate='):]
             state.save()
 
-            if realtime: state.add_comment(':v: @{} can now approve this pull request'.format(state.delegate))
+            if realtime:
+                state.add_comment(':v: @{} can now approve this pull request'.format(state.delegate))
 
         elif word == 'delegate-':
             state.delegate = ''
@@ -306,13 +319,15 @@ def parse_commands(body, username, repo_cfg, state, my_username, db, *, realtime
 
         elif word == 'delegate+':
             if try_only:
-                if realtime: state.add_comment(':key: Insufficient privileges')
+                if realtime:
+                    state.add_comment(':key: Insufficient privileges')
                 continue
 
             state.delegate = state.get_repo().pull_request(state.num).user.login
             state.save()
 
-            if realtime: state.add_comment(':v: @{} can now approve this pull request'.format(state.delegate))
+            if realtime:
+                state.add_comment(':v: @{} can now approve this pull request'.format(state.delegate))
 
         elif word == 'retry' and realtime:
             state.set_status('')
@@ -343,7 +358,8 @@ def parse_commands(body, username, repo_cfg, state, my_username, db, *, realtime
                 mat = re.search('(?s)<div class="error">(.*?)</div>', res.text)
                 if mat:
                     err = mat.group(1).strip()
-                    if not err: err = 'Unknown error'
+                    if not err:
+                        err = 'Unknown error'
                 else:
                     err = ''
 
@@ -365,6 +381,7 @@ def parse_commands(body, username, repo_cfg, state, my_username, db, *, realtime
             words[i] = ''
 
     return state_changed
+
 
 def create_merge(state, repo_cfg, branch, git_cfg):
     base_sha = state.get_repo().ref('heads/' + state.base_ref).object.sha
@@ -453,9 +470,11 @@ def create_merge(state, repo_cfg, branch, git_cfg):
                 force=True,
             )
 
-        try: merge_commit = state.get_repo().merge(branch, state.head_sha, merge_msg)
+        try:
+            merge_commit = state.get_repo().merge(branch, state.head_sha, merge_msg)
         except github3.models.GitHubError as e:
-            if e.code != 409: raise
+            if e.code != 409:
+                raise
         else:
             return merge_commit.sha if merge_commit else ''
 
@@ -465,6 +484,7 @@ def create_merge(state, repo_cfg, branch, git_cfg):
     state.add_comment(':lock: ' + desc)
 
     return ''
+
 
 def start_build(state, repo_cfgs, buildbot_slots, logger, db, git_cfg):
     if buildbot_slots[0]:
@@ -539,6 +559,7 @@ def start_build(state, repo_cfgs, buildbot_slots, logger, db, git_cfg):
 
     return True
 
+
 def start_rebuild(state, repo_cfgs):
     repo_cfg = repo_cfgs[state.repo_label]
 
@@ -603,11 +624,13 @@ def start_rebuild(state, repo_cfgs):
 
     return True
 
+
 def start_build_or_rebuild(state, repo_cfgs, *args):
     if start_rebuild(state, repo_cfgs):
         return True
 
     return start_build(state, repo_cfgs, *args)
+
 
 def process_queue(states, repos, repo_cfgs, logger, buildbot_slots, db, git_cfg):
     for repo_label, repo in repos.items():
@@ -634,6 +657,7 @@ def process_queue(states, repos, repo_cfgs, logger, buildbot_slots, db, git_cfg)
                 if start_build(state, repo_cfgs, buildbot_slots, logger, db, git_cfg):
                     return
 
+
 def fetch_mergeability(mergeable_que):
     re_pull_num = re.compile('(?i)merge (?:of|pull request) #([0-9]+)')
 
@@ -650,8 +674,10 @@ def fetch_mergeability(mergeable_que):
                 if cause:
                     mat = re_pull_num.search(cause['title'])
 
-                    if mat: issue_or_commit = '#' + mat.group(1)
-                    else: issue_or_commit = cause['sha'][:7]
+                    if mat:
+                        issue_or_commit = '#' + mat.group(1)
+                    else:
+                        issue_or_commit = cause['sha'][:7]
                 else:
                     issue_or_commit = ''
 
@@ -666,6 +692,7 @@ def fetch_mergeability(mergeable_que):
 
         finally:
             mergeable_que.task_done()
+
 
 def synchronize(repo_label, repo_cfg, logger, gh, states, repos, db, mergeable_que, my_username, repo_labels):
     logger.info('Synchronizing {}...'.format(repo_label))
@@ -727,14 +754,16 @@ def synchronize(repo_label, repo_cfg, logger, gh, states, repos, db, mergeable_q
 
     logger.info('Done synchronizing {}!'.format(repo_label))
 
+
 def arguments():
-    parser = argparse.ArgumentParser(description =
-                                     'A bot that integrates with GitHub and '
-                                     'your favorite continuous integration service')
+    parser = argparse.ArgumentParser(
+        description='A bot that integrates with GitHub and your favorite '
+                    'continuous integration service')
     parser.add_argument('-v', '--verbose',
                         action='store_true', help='Enable more verbose logging')
 
     return parser.parse_args()
+
 
 def main():
     args = arguments()
@@ -752,7 +781,8 @@ def main():
 
     gh = github3.login(token=cfg['github']['access_token'])
     user = gh.user()
-    try: user_email = [x for x in gh.iter_emails() if x['primary']][0]['email']
+    try:
+        user_email = [x for x in gh.iter_emails() if x['primary']][0]['email']
     except IndexError:
         raise RuntimeError('Primary email not set, or "user" scope not granted')
 
@@ -858,8 +888,10 @@ def main():
     for repo_label, num, builder, res, url, merge_sha in db.fetchall():
         try:
             state = states[repo_label][num]
-            if builder not in state.build_res: raise KeyError
-            if state.merge_sha != merge_sha: raise KeyError
+            if builder not in state.build_res:
+                raise KeyError
+            if state.merge_sha != merge_sha:
+                raise KeyError
         except KeyError:
             db_query(db, 'DELETE FROM build_res WHERE repo = ? AND num = ? AND builder = ?', [repo_label, num, builder])
             continue
@@ -871,7 +903,8 @@ def main():
 
     db_query(db, 'SELECT repo, num, mergeable FROM mergeable')
     for repo_label, num, mergeable in db.fetchall():
-        try: state = states[repo_label][num]
+        try:
+            state = states[repo_label][num]
         except KeyError:
             db_query(db, 'DELETE FROM mergeable WHERE repo = ? AND num = ?', [repo_label, num])
             continue
@@ -879,6 +912,7 @@ def main():
         state.mergeable = bool(mergeable) if mergeable is not None else None
 
     queue_handler_lock = Lock()
+
     def queue_handler():
         with queue_handler_lock:
             return process_queue(states, repos, repo_cfgs, logger, buildbot_slots, db, git_cfg)

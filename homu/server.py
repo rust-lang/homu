@@ -12,10 +12,14 @@ from bottle import get, post, run, request, redirect, abort, response
 import hashlib
 from threading import Thread
 
-import bottle; bottle.BaseRequest.MEMFILE_MAX = 1024 * 1024 * 10
+import bottle
+bottle.BaseRequest.MEMFILE_MAX = 1024 * 1024 * 10
 
-class G: pass
+
+class G:
+    pass
 g = G()
+
 
 def find_state(sha):
     for repo_label, repo_states in g.states.items():
@@ -24,6 +28,7 @@ def find_state(sha):
                 return state, repo_label
 
     raise ValueError('Invalid SHA')
+
 
 def get_repo(repo_label, repo_cfg):
     repo = g.repos[repo_label]
@@ -34,9 +39,11 @@ def get_repo(repo_label, repo_cfg):
         assert repo.name == repo_cfg['name']
     return repo
 
+
 @get('/')
 def index():
     return g.tpls['index'].render(repos=sorted(g.repos))
+
 
 @get('/queue/<repo_label:path>')
 def queue(repo_label):
@@ -71,14 +78,15 @@ def queue(repo_label):
         })
 
     return g.tpls['queue'].render(
-        repo_label = repo_label,
-        states = rows,
-        oauth_client_id = g.cfg['github']['app_client_id'],
-        total = len(pull_states),
-        approved = len([x for x in pull_states if x.approved_by]),
-        rolled_up = len([x for x in pull_states if x.rollup]),
-        failed = len([x for x in pull_states if x.status == 'failure' or x.status == 'error']),
+        repo_label=repo_label,
+        states=rows,
+        oauth_client_id=g.cfg['github']['app_client_id'],
+        total=len(pull_states),
+        approved=len([x for x in pull_states if x.approved_by]),
+        rolled_up=len([x for x in pull_states if x.rollup]),
+        failed=len([x for x in pull_states if x.status == 'failure' or x.status == 'error']),
     )
+
 
 @get('/callback')
 def callback():
@@ -112,14 +120,17 @@ def callback():
     else:
         abort(400, 'Invalid command')
 
+
 def rollup(user_gh, state, repo_label, repo_cfg, repo):
     user_repo = user_gh.repository(user_gh.user().login, repo.name)
     base_repo = user_gh.repository(repo.owner.login, repo.name)
 
     nums = state.get('nums', [])
     if nums:
-        try: rollup_states = [g.states[repo_label][num] for num in nums]
-        except KeyError as e: return 'Invalid PR number: {}'.format(e.args[0])
+        try:
+            rollup_states = [g.states[repo_label][num] for num in nums]
+        except KeyError as e:
+            return 'Invalid PR number: {}'.format(e.args[0])
     else:
         rollup_states = [x for x in g.states[repo_label].values() if x.rollup]
     rollup_states = [x for x in rollup_states if x.approved_by]
@@ -154,9 +165,11 @@ def rollup(user_gh, state, repo_label, repo_cfg, repo):
             state.body,
         )
 
-        try: user_repo.merge(repo_cfg.get('branch', {}).get('rollup', 'rollup'), state.head_sha, merge_msg)
+        try:
+            user_repo.merge(repo_cfg.get('branch', {}).get('rollup', 'rollup'), state.head_sha, merge_msg)
         except github3.models.GitHubError as e:
-            if e.code != 409: raise
+            if e.code != 409:
+                raise
 
             failures.append(state.num)
         else:
@@ -179,6 +192,7 @@ def rollup(user_gh, state, repo_label, repo_cfg, repo):
         return e.response.text
     else:
         redirect(pull.html_url)
+
 
 @post('/github')
 def github():
@@ -348,7 +362,8 @@ def github():
                 g.queue_handler()
 
     elif event_type == 'status':
-        try: state, repo_label = find_state(info['sha'])
+        try:
+            state, repo_label = find_state(info['sha'])
         except ValueError:
             return 'OK'
 
@@ -369,10 +384,11 @@ def github():
 
     return 'OK'
 
+
 def report_build_res(succ, url, builder, state, logger, repo_cfg):
     lazy_debug(logger,
                lambda: 'build result {}: builder = {}, succ = {}, current build_res = {}'
-                            .format(state, builder, succ, state.build_res_summary()))
+                       .format(state, builder, succ, state.build_res_summary()))
 
     state.set_build_res(builder, succ, url)
 
@@ -412,6 +428,7 @@ def report_build_res(succ, url, builder, state, logger, repo_cfg):
 
     g.queue_handler()
 
+
 @post('/buildbot')
 def buildbot():
     logger = g.logger.getChild('buildbot')
@@ -425,11 +442,14 @@ def buildbot():
             info = row['payload']['build']
             props = dict(x[:2] for x in info['properties'])
 
-            if 'retry' in info['text']: continue
+            if 'retry' in info['text']:
+                continue
 
-            if not props['revision']: continue
+            if not props['revision']:
+                continue
 
-            try: state, repo_label = find_state(props['revision'])
+            try:
+                state, repo_label = find_state(props['revision'])
             except ValueError:
                 lazy_debug(logger,
                            lambda: 'Invalid commit ID from Buildbot: {}'.format(props['revision']))
@@ -496,10 +516,13 @@ def buildbot():
             info = row['payload']['build']
             props = dict(x[:2] for x in info['properties'])
 
-            if not props['revision']: continue
+            if not props['revision']:
+                continue
 
-            try: state, repo_label = find_state(props['revision'])
-            except ValueError: pass
+            try:
+                state, repo_label = find_state(props['revision'])
+            except ValueError:
+                pass
             else:
                 if info['builderName'] in state.build_res:
                     repo_cfg = g.repo_cfgs[repo_label]
@@ -522,6 +545,7 @@ def buildbot():
 
     return 'OK'
 
+
 @post('/travis')
 def travis():
     logger = g.logger.getChild('travis')
@@ -530,7 +554,8 @@ def travis():
 
     lazy_debug(logger, lambda: 'info: {}'.format(utils.remove_url_keys_from_json(info)))
 
-    try: state, repo_label = find_state(info['commit'])
+    try:
+        state, repo_label = find_state(info['commit'])
     except ValueError:
         lazy_debug(logger, lambda: 'Invalid commit ID from Travis: {}'.format(info['commit']))
         return 'OK'
@@ -550,7 +575,7 @@ def travis():
         # fabricating travis notifications to try to trick Homu, but,
         # I imagine that this will most often occur because a repo is
         # misconfigured.
-        logger.warn('authorization failed for {}, maybe the repo has the wrong travis token? ' \
+        logger.warn('authorization failed for {}, maybe the repo has the wrong travis token? '
                     'header = {}, computed = {}'
                     .format(state, auth_header, code))
         abort(400, 'Authorization failed')
@@ -561,6 +586,7 @@ def travis():
 
     return 'OK'
 
+
 def synch(user_gh, state, repo_label, repo_cfg, repo):
     if not repo.is_collaborator(user_gh.user().login):
         abort(400, 'You are not a collaborator')
@@ -568,6 +594,7 @@ def synch(user_gh, state, repo_label, repo_cfg, repo):
     Thread(target=synchronize, args=[repo_label, repo_cfg, g.logger, g.gh, g.states, g.repos, g.db, g.mergeable_que, g.my_username, g.repo_labels]).start()
 
     return 'Synchronizing {}...'.format(repo_label)
+
 
 @post('/admin')
 def admin():
@@ -615,10 +642,11 @@ def admin():
 
     return 'Unrecognized command'
 
+
 def start(cfg, states, queue_handler, repo_cfgs, repos, logger, buildbot_slots, my_username, db, repo_labels, mergeable_que, gh):
     env = jinja2.Environment(
-        loader = jinja2.FileSystemLoader(pkg_resources.resource_filename(__name__, 'html')),
-        autoescape = True,
+        loader=jinja2.FileSystemLoader(pkg_resources.resource_filename(__name__, 'html')),
+        autoescape=True,
     )
     tpls = {}
     tpls['index'] = env.get_template('index.html')
