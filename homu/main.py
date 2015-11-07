@@ -262,6 +262,7 @@ def parse_commands(body, username, repo_cfg, state, my_username, db, *, realtime
 
             if sha_cmp(cur_sha, state.head_sha):
                 state.approved_by = approver
+                state.try_ = False
 
                 state.save()
             elif realtime and username != my_username:
