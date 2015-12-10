@@ -41,7 +41,7 @@
         </p>
 
         <ul>
-            <li><code>r+ (SHA)</code>: Accept a PR. Optionally, the SHA of the last commit in the PR can be provided as a guard against synchronization issues or mallicious users. Regardless of the form used, PRs will automatically be unaccepted if the contents are changed.</li>
+            <li><code>r+ (SHA)</code>: Accept a PR. Optionally, the SHA of the last commit in the PR can be provided as a guard against synchronization issues or malicious users. Regardless of the form used, PRs will automatically be unaccepted if the contents are changed.</li>
             <li><code>r=NAME (SHA)</code>: Accept a PR on the behalf of NAME.</li>
             <li><code>r-</code>: Unacccept a PR.</li>
             <li><code>p=NUMBER</code>: Set the priority of the accepted PR (defaults to 0).</li>
@@ -51,6 +51,9 @@
             <li><code>try</code>: Request that the PR be tested by buildbot, without accepting it.</li>
             <li><code>force</code>: Stop all the builds on the configured builders, and proceed to the next PR.</li>
             <li><code>clean</code>: Clean up the previous build results.</li>
+            <li><code>delegate=NAME</code>: Allow NAME to issue all homu commands for this PR</li>
+            <li><code>delegate+</code>: Delegate to the PR owner</li>
+            <li><code>delegate-</code>: Remove the delegatee</li>
         </ul>
 
         <h4>Examples</h4>

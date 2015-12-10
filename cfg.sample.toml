@@ -10,6 +10,16 @@ access_token = ""
 app_client_id = ""
 app_client_secret = ""
 
+[git]
+
+# Use the local Git command. Required to use some advanced features. It also
+# speeds up Travis by reducing temporary commits
+#local_git = false
+
+# SSH private key. Needed only when the local Git command is used
+#ssh_key = """
+#"""
+
 [web]
 
 # The port homu listens on
@@ -25,10 +35,18 @@ name = ""
 # who has r+ rights?
 reviewers = ["barosl", "graydon"]
 
+# who has 'try' rights? (try, retry, force, clean, prioritization)
+try_users = []
+
+# Keep the commit history linear. Requires the local Git command
+#linear = false
+
+# Auto-squash commits. Requires the local Git command
+#autosquash = true
+
 ## branch names (these settings here are the defaults)
 #[repo.NAME.branch]
 #
-#master = "master"
 #auto = "auto"
 #try = "try"
 #rollup = "rollup"

@@ -13,6 +13,9 @@ import requests
 from contextlib import contextmanager
 from itertools import chain
 from queue import Queue
+import os
+import subprocess
+from .git_helper import SSH_KEY_FILE
 
 STATUS_TO_PRIORITY = {
     'success': 0,
@@ -53,6 +56,7 @@ class PullReqState:
     head_ref = ''
     base_ref = ''
     assignee = ''
+    delegate = ''
 
     def __init__(self, num, head_sha, status, db, repo_label, mergeable_que, gh, owner, name, repos):
         self.head_advanced('', use_db=False)
@@ -178,7 +182,7 @@ class PullReqState:
         return repo
 
     def save(self):
-        db_query(self.db, 'INSERT OR REPLACE INTO pull (repo, num, status, merge_sha, title, body, head_sha, head_ref, base_ref, assignee, approved_by, priority, try_, rollup) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', [
+        db_query(self.db, 'INSERT OR REPLACE INTO pull (repo, num, status, merge_sha, title, body, head_sha, head_ref, base_ref, assignee, approved_by, priority, try_, rollup, delegate) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', [
             self.repo_label,
             self.num,
             self.status,
@@ -193,6 +197,7 @@ class PullReqState:
             self.priority,
             self.try_,
             self.rollup,
+            self.delegate,
         ])
 
     def refresh(self):
@@ -201,6 +206,14 @@ class PullReqState:
         self.title = issue.title
         self.body = issue.body
 
+    def fake_merged(self, repo_cfg):
+        if repo_cfg.get('linear', False) or repo_cfg.get('autosquash', False):
+            msg = '!!! Temporary commit !!!\n\nThis commit is artifically made up to mark PR {} as merged.\n\nIf this commit remained in the history, you may reset HEAD to {}\n\n[ci skip]'.format(self.num, self.merge_sha)
+
+            # `merge()` will return `None` if the `head_sha` commit is already part of the `base_ref` branch, which means rebasing didn't have to modify the original commit
+            if self.get_repo().merge(self.base_ref, self.head_sha, msg):
+                self.rebased = True
+
 def sha_cmp(short, full):
     return len(short) >= 4 and short == full[:len(short)]
 
@@ -208,8 +221,14 @@ def sha_or_blank(sha):
     return sha if re.match(r'^[0-9a-f]+$', sha) else ''
 
 def parse_commands(body, username, repo_cfg, state, my_username, db, *, realtime=False, sha=''):
+    try_only = False
     if username not in repo_cfg['reviewers'] and username != my_username:
-        return False
+        if username == state.delegate:
+            pass # Allow users who have been delegated review powers
+        elif username in repo_cfg.get('try_users', []):
+            try_only = True
+        else:
+            return False
 
     state_changed = False
 
@@ -218,12 +237,32 @@ def parse_commands(body, username, repo_cfg, state, my_username, db, *, realtime
         found = True
 
         if word == 'r+' or word.startswith('r='):
+            if try_only:
+                if realtime: state.add_comment(':key: Insufficient privileges')
+                continue
+
             if not sha and i+1 < len(words):
                 cur_sha = sha_or_blank(words[i+1])
             else:
                 cur_sha = sha
 
             approver = word[len('r='):] if word.startswith('r=') else username
+
+            # Ignore "r=me"
+            if approver == 'me':
+                continue
+
+            # Sometimes, GitHub sends the head SHA of a PR as 0000000 through the webhook. This is
+            # called a "null commit", and seems to happen when GitHub internally encounters a race
+            # condition. Last time, it happened when squashing commits in a PR. In this case, we
+            # just try to retrieve the head SHA manually.
+            if all(x == '0' for x in state.head_sha):
+                state.add_comment(':bangbang: Invalid head SHA found, retrying: `{}`'.format(state.head_sha))
+
+                state.head_sha = state.get_repo().pull_request(state.num).head.sha
+                state.save()
+
+                assert any(x != '0' for x in state.head_sha)
 
             if sha_cmp(cur_sha, state.head_sha):
                 state.approved_by = approver
@@ -237,6 +276,10 @@ def parse_commands(body, username, repo_cfg, state, my_username, db, *, realtime
                     state.add_comment(':pushpin: Commit {:.7} has been approved by `{}`\n\n<!-- @{} r={} {} -->'.format(state.head_sha, approver, my_username, approver, state.head_sha))
 
         elif word == 'r-':
+            if try_only:
+                if realtime: state.add_comment(':key: Insufficient privileges')
+                continue
+
             state.approved_by = ''
 
             state.save()
@@ -246,6 +289,30 @@ def parse_commands(body, username, repo_cfg, state, my_username, db, *, realtime
             except ValueError: pass
 
             state.save()
+
+        elif word.startswith('delegate='):
+            if try_only:
+                if realtime: state.add_comment(':key: Insufficient privileges')
+                continue
+
+            state.delegate = word[len('delegate='):]
+            state.save()
+
+            if realtime: state.add_comment(':v: @{} can now approve this pull request'.format(state.delegate))
+
+        elif word == 'delegate-':
+            state.delegate = ''
+            state.save()
+
+        elif word == 'delegate+':
+            if try_only:
+                if realtime: state.add_comment(':key: Insufficient privileges')
+                continue
+
+            state.delegate = state.get_repo().pull_request(state.num).user.login
+            state.save()
+
+            if realtime: state.add_comment(':v: @{} can now approve this pull request'.format(state.delegate))
 
         elif word == 'retry' and realtime:
             state.set_status('')
@@ -299,14 +366,8 @@ def parse_commands(body, username, repo_cfg, state, my_username, db, *, realtime
 
     return state_changed
 
-def create_merge(state, repo_cfg, branch):
-    master_sha = state.get_repo().ref('heads/' + repo_cfg.get('branch', {}).get('master', 'master')).object.sha
-    utils.github_set_ref(
-        state.get_repo(),
-        'heads/' + branch,
-        master_sha,
-        force=True,
-    )
+def create_merge(state, repo_cfg, branch, git_cfg):
+    base_sha = state.get_repo().ref('heads/' + state.base_ref).object.sha
 
     state.refresh()
 
@@ -317,21 +378,95 @@ def create_merge(state, repo_cfg, branch):
         state.title,
         state.body,
     )
-    try: merge_commit = state.get_repo().merge(branch, state.head_sha, merge_msg)
-    except github3.models.GitHubError as e:
-        if e.code != 409: raise
 
-        state.set_status('error')
-        desc = 'Merge conflict'
-        utils.github_create_status(state.get_repo(), state.head_sha, 'error', '', desc, context='homu')
+    desc = 'Merge conflict'
 
-        state.add_comment(':lock: ' + desc)
+    if git_cfg['local_git']:
+        pull = state.get_repo().pull_request(state.num)
 
-        return None
+        fpath = 'cache/{}/{}'.format(repo_cfg['owner'], repo_cfg['name'])
+        url = 'git@github.com:{}/{}.git'.format(repo_cfg['owner'], repo_cfg['name'])
+        head_repo_url = 'https://github.com/{}/{}.git'.format(*pull.head.repo)
+        head_branch = state.head_ref.split(':')[1]
 
-    return merge_commit
+        os.makedirs(os.path.dirname(SSH_KEY_FILE), exist_ok=True)
+        with open(SSH_KEY_FILE, 'w') as fp:
+            fp.write(git_cfg['ssh_key'])
+        os.chmod(SSH_KEY_FILE, 0o600)
 
-def start_build(state, repo_cfgs, buildbot_slots, logger, db):
+        if os.path.exists(fpath):
+            utils.logged_call(['git', '-C', fpath, 'fetch', '--no-tags', 'origin', state.base_ref])
+        else:
+            utils.logged_call(['git', 'clone', url, fpath])
+
+        utils.silent_call(['git', '-C', fpath, 'remote', 'remove', 'head_repo'])
+        utils.logged_call(['git', '-C', fpath, 'remote', 'add', '-f', '--no-tags'] + (['-t', head_branch] if head_branch else []) + ['head_repo', head_repo_url])
+
+        utils.silent_call(['git', '-C', fpath, 'rebase', '--abort'])
+        utils.silent_call(['git', '-C', fpath, 'merge', '--abort'])
+
+        if repo_cfg.get('linear', False):
+            utils.logged_call(['git', '-C', fpath, 'checkout', '-B', branch, state.head_sha])
+            try:
+                utils.logged_call(['git', '-C', fpath, '-c', 'user.name=' + git_cfg['name'], '-c', 'user.email=' + git_cfg['email'], 'rebase'] + (['-i', '--autosquash'] if repo_cfg.get('autosquash', False) else []) + [base_sha])
+            except subprocess.CalledProcessError:
+                if repo_cfg.get('autosquash', False):
+                    utils.silent_call(['git', '-C', fpath, 'rebase', '--abort'])
+                    if utils.silent_call(['git', '-C', fpath, 'rebase', base_sha]) == 0:
+                        desc = 'Auto-squashing failed'
+            else:
+                utils.logged_call(['git', '-C', fpath, '-c', 'user.name=' + git_cfg['name'], '-c', 'user.email=' + git_cfg['email'], 'commit', '-m', merge_msg, '--allow-empty'])
+                utils.logged_call(['git', '-C', fpath, 'push', '-f', 'origin', branch])
+
+                return subprocess.check_output(['git', '-C', fpath, 'rev-parse', 'HEAD']).decode('ascii').strip()
+        else:
+            utils.logged_call(['git', '-C', fpath, 'checkout', '-B', 'homu-tmp', state.head_sha])
+
+            ok = True
+            if repo_cfg.get('autosquash', False):
+                try:
+                    merge_base_sha = subprocess.check_output(['git', '-C', fpath, 'merge-base', base_sha, state.head_sha]).decode('ascii').strip()
+                    utils.logged_call(['git', '-C', fpath, '-c', 'user.name=' + git_cfg['name'], '-c', 'user.email=' + git_cfg['email'], 'rebase', '-i', '--autosquash', '--onto', merge_base_sha, base_sha])
+                except subprocess.CalledProcessError:
+                    desc = 'Auto-squashing failed'
+                    ok = False
+
+            if ok:
+                utils.logged_call(['git', '-C', fpath, 'checkout', '-B', branch, base_sha])
+                try:
+                    utils.logged_call(['git', '-C', fpath, '-c', 'user.name=' + git_cfg['name'], '-c', 'user.email=' + git_cfg['email'], 'merge', 'heads/homu-tmp', '-m', merge_msg])
+                except subprocess.CalledProcessError:
+                    pass
+                else:
+                    utils.logged_call(['git', '-C', fpath, 'push', '-f', 'origin', branch])
+
+                    return subprocess.check_output(['git', '-C', fpath, 'rev-parse', 'HEAD']).decode('ascii').strip()
+    else:
+        if repo_cfg.get('linear', False) or repo_cfg.get('autosquash', False):
+            raise RuntimeError('local_git must be turned on to use this feature')
+
+        if branch != state.base_ref:
+            utils.github_set_ref(
+                state.get_repo(),
+                'heads/' + branch,
+                base_sha,
+                force=True,
+            )
+
+        try: merge_commit = state.get_repo().merge(branch, state.head_sha, merge_msg)
+        except github3.models.GitHubError as e:
+            if e.code != 409: raise
+        else:
+            return merge_commit.sha if merge_commit else ''
+
+    state.set_status('error')
+    utils.github_create_status(state.get_repo(), state.head_sha, 'error', '', desc, context='homu')
+
+    state.add_comment(':lock: ' + desc)
+
+    return ''
+
+def start_build(state, repo_cfgs, buildbot_slots, logger, db, git_cfg):
     if buildbot_slots[0]:
         return True
 
@@ -352,12 +487,40 @@ def start_build(state, repo_cfgs, buildbot_slots, logger, db):
     else:
         raise RuntimeError('Invalid configuration')
 
-    merge_commit = create_merge(state, repo_cfg, branch)
-    if not merge_commit:
+    if state.approved_by and builders == ['status'] and repo_cfg['status']['context'] == 'continuous-integration/travis-ci/push':
+        for info in utils.github_iter_statuses(state.get_repo(), state.head_sha):
+            if info.context == 'continuous-integration/travis-ci/pr':
+                if info.state == 'success':
+                    mat = re.search('/builds/([0-9]+)$', info.target_url)
+                    if mat:
+                        url = 'https://api.travis-ci.org/{}/{}/builds/{}'.format(state.owner, state.name, mat.group(1))
+                        res = requests.get(url)
+                        travis_sha = json.loads(res.text)['commit']
+                        travis_commit = state.get_repo().commit(travis_sha)
+                        base_sha = state.get_repo().ref('heads/' + state.base_ref).object.sha
+                        if [travis_commit.parents[0]['sha'], travis_commit.parents[1]['sha']] == [base_sha, state.head_sha]:
+                            merge_sha = create_merge(state, repo_cfg, state.base_ref, git_cfg)
+                            if merge_sha:
+                                desc = 'Test exempted'
+                                url = info.target_url
+
+                                state.set_status('success')
+                                utils.github_create_status(state.get_repo(), state.head_sha, 'success', url, desc, context='homu')
+                                state.add_comment(':zap: {} - [{}]({})'.format(desc, 'status', url))
+
+                                state.merge_sha = merge_sha
+                                state.save()
+
+                                state.fake_merged(repo_cfg)
+                                return True
+                break
+
+    merge_sha = create_merge(state, repo_cfg, branch, git_cfg)
+    if not merge_sha:
         return False
 
     state.init_build_res(builders)
-    state.merge_sha = merge_commit.sha
+    state.merge_sha = merge_sha
 
     state.save()
 
@@ -397,10 +560,10 @@ def start_rebuild(state, repo_cfgs):
     if not builders or not succ_builders:
         return False
 
-    master_sha = state.get_repo().ref('heads/' + repo_cfg.get('branch', {}).get('master', 'master')).object.sha
+    base_sha = state.get_repo().ref('heads/' + state.base_ref).object.sha
     parent_shas = [x['sha'] for x in state.get_repo().commit(state.merge_sha).parents]
 
-    if master_sha not in parent_shas:
+    if base_sha not in parent_shas:
         return False
 
     utils.github_set_ref(state.get_repo(), 'tags/homu-tmp', state.merge_sha, force=True)
@@ -446,7 +609,7 @@ def start_build_or_rebuild(state, repo_cfgs, *args):
 
     return start_build(state, repo_cfgs, *args)
 
-def process_queue(states, repos, repo_cfgs, logger, buildbot_slots, db):
+def process_queue(states, repos, repo_cfgs, logger, buildbot_slots, db, git_cfg):
     for repo_label, repo in repos.items():
         repo_states = sorted(states[repo_label].values())
 
@@ -455,7 +618,7 @@ def process_queue(states, repos, repo_cfgs, logger, buildbot_slots, db):
                 break
 
             elif state.status == '' and state.approved_by:
-                if start_build_or_rebuild(state, repo_cfgs, buildbot_slots, logger, db):
+                if start_build_or_rebuild(state, repo_cfgs, buildbot_slots, logger, db, git_cfg):
                     return
 
             elif state.status == 'success' and state.try_ and state.approved_by:
@@ -463,12 +626,12 @@ def process_queue(states, repos, repo_cfgs, logger, buildbot_slots, db):
 
                 state.save()
 
-                if start_build(state, repo_cfgs, buildbot_slots, logger, db):
+                if start_build(state, repo_cfgs, buildbot_slots, logger, db, git_cfg):
                     return
 
         for state in repo_states:
             if state.status == '' and state.try_:
-                if start_build(state, repo_cfgs, buildbot_slots, logger, db):
+                if start_build(state, repo_cfgs, buildbot_slots, logger, db, git_cfg):
                     return
 
 def fetch_mergeability(mergeable_que):
@@ -588,14 +751,24 @@ def main():
             cfg = json.loads(fp.read())
 
     gh = github3.login(token=cfg['github']['access_token'])
+    user = gh.user()
+    try: user_email = [x for x in gh.iter_emails() if x['primary']][0]['email']
+    except IndexError:
+        raise RuntimeError('Primary email not set, or "user" scope not granted')
 
     states = {}
     repos = {}
     repo_cfgs = {}
     buildbot_slots = ['']
-    my_username = gh.user().login
+    my_username = user.login
     repo_labels = {}
     mergeable_que = Queue()
+    git_cfg = {
+        'name': user.name if user.name else user.login,
+        'email': user_email,
+        'ssh_key': cfg.get('git', {}).get('ssh_key', ''),
+        'local_git': cfg.get('git', {}).get('local_git', False),
+    }
 
     db_conn = sqlite3.connect('main.db', check_same_thread=False, isolation_level=None)
     db = db_conn.cursor()
@@ -615,6 +788,7 @@ def main():
         priority INTEGER,
         try_ INTEGER,
         rollup INTEGER,
+        delegate TEXT,
         UNIQUE (repo, num)
     )''')
 
@@ -642,20 +816,20 @@ def main():
         repo_states = {}
         repos[repo_label] = None
 
-        db_query(db, 'SELECT num, head_sha, status, title, body, head_ref, base_ref, assignee, approved_by, priority, try_, rollup, merge_sha FROM pull WHERE repo = ?', [repo_label])
-        for num, head_sha, status, title, body, head_ref, base_ref, assignee, approved_by, priority, try_, rollup, merge_sha in db.fetchall():
+        db_query(db, 'SELECT num, head_sha, status, title, body, head_ref, base_ref, assignee, approved_by, priority, try_, rollup, delegate, merge_sha FROM pull WHERE repo = ?', [repo_label])
+        for num, head_sha, status, title, body, head_ref, base_ref, assignee, approved_by, priority, try_, rollup, delegate, merge_sha in db.fetchall():
             state = PullReqState(num, head_sha, status, db, repo_label, mergeable_que, gh, repo_cfg['owner'], repo_cfg['name'], repos)
             state.title = title
             state.body = body
             state.head_ref = head_ref
             state.base_ref = base_ref
-            state.set_mergeable(None)
             state.assignee = assignee
 
             state.approved_by = approved_by
             state.priority = int(priority)
             state.try_ = bool(try_)
             state.rollup = bool(rollup)
+            state.delegate = delegate
 
             if merge_sha:
                 if 'buildbot' in repo_cfg:
@@ -707,7 +881,10 @@ def main():
     queue_handler_lock = Lock()
     def queue_handler():
         with queue_handler_lock:
-            return process_queue(states, repos, repo_cfgs, logger, buildbot_slots, db)
+            return process_queue(states, repos, repo_cfgs, logger, buildbot_slots, db, git_cfg)
+
+    os.environ['GIT_SSH'] = os.path.join(os.path.dirname(__file__), 'git_helper.py')
+    os.environ['GIT_EDITOR'] = 'cat'
 
     from . import server
     Thread(target=server.start, args=[cfg, states, queue_handler, repo_cfgs, repos, logger, buildbot_slots, my_username, db, repo_labels, mergeable_que, gh]).start()

@@ -128,11 +128,13 @@ def rollup(user_gh, state, repo_label, repo_cfg, repo):
     if not rollup_states:
         return 'No pull requests are marked as rollup'
 
-    master_sha = repo.ref('heads/' + repo_cfg.get('branch', {}).get('master', 'master')).object.sha
+    base_ref = rollup_states[0].base_ref
+
+    base_sha = repo.ref('heads/' + base_ref).object.sha
     utils.github_set_ref(
         user_repo,
         'heads/' + repo_cfg.get('branch', {}).get('rollup', 'rollup'),
-        master_sha,
+        base_sha,
         force=True,
     )
 
@@ -140,6 +142,10 @@ def rollup(user_gh, state, repo_label, repo_cfg, repo):
     failures = []
 
     for state in rollup_states:
+        if base_ref != state.base_ref:
+            failures.append(state.num)
+            continue
+
         merge_msg = 'Rollup merge of #{} - {}, r={}\n\n{}\n\n{}'.format(
             state.num,
             state.head_ref,
@@ -165,7 +171,7 @@ def rollup(user_gh, state, repo_label, repo_cfg, repo):
     try:
         pull = base_repo.create_pull(
             title,
-            repo_cfg.get('branch', {}).get('master', 'master'),
+            state.base_ref,
             user_repo.owner.login + ':' + repo_cfg.get('branch', {}).get('rollup', 'rollup'),
             body,
         )
@@ -250,7 +256,7 @@ def github():
 
             if action == 'reopened':
                 # FIXME: Review comments are ignored here
-                for comment in get_repo(repo_label, repo_cfg).issue(pull_num).iter_comments():
+                for comment in state.get_repo().issue(pull_num).iter_comments():
                     found = parse_commands(
                         comment.body,
                         comment.user.login,
@@ -260,6 +266,14 @@ def github():
                         g.db,
                     ) or found
 
+                status = ''
+                for info in utils.github_iter_statuses(state.get_repo(), state.head_sha):
+                    if info.context == 'homu':
+                        status = info.state
+                        break
+
+                state.set_status(status)
+
             state.save()
 
             g.states[repo_label][pull_num] = state
@@ -268,6 +282,15 @@ def github():
                 g.queue_handler()
 
         elif action == 'closed':
+            state = g.states[repo_label][pull_num]
+            if getattr(state, 'rebased', False):
+                utils.github_set_ref(
+                    state.get_repo(),
+                    'heads/' + state.base_ref,
+                    state.merge_sha,
+                    force=True,
+                )
+
             del g.states[repo_label][pull_num]
 
             db_query(g.db, 'DELETE FROM pull WHERE repo = ? AND num = ?', [repo_label, pull_num])
@@ -342,11 +365,11 @@ def github():
             if row['name'] == state.base_ref:
                 return 'OK'
 
-        report_build_res(info['state'] == 'success', info['target_url'], 'status', repo_label, state, logger)
+        report_build_res(info['state'] == 'success', info['target_url'], 'status', state, logger, repo_cfg)
 
     return 'OK'
 
-def report_build_res(succ, url, builder, repo_label, state, logger):
+def report_build_res(succ, url, builder, state, logger, repo_cfg):
     lazy_debug(logger,
                lambda: 'build result {}: builder = {}, succ = {}, current build_res = {}'
                             .format(state, builder, succ, state.build_res_summary()))
@@ -366,9 +389,12 @@ def report_build_res(succ, url, builder, repo_label, state, logger):
                 try:
                     utils.github_set_ref(
                         state.get_repo(),
-                        'heads/' + g.repo_cfgs[repo_label].get('branch', {}).get('master', 'master'),
+                        'heads/' + state.base_ref,
                         state.merge_sha,
                     )
+
+                    state.fake_merged(repo_cfg)
+
                 except github3.models.GitHubError as e:
                     state.set_status('error')
                     desc = 'Test was successful, but fast-forwarding failed: {}'.format(e)
@@ -464,7 +490,7 @@ def buildbot():
                 else:
                     logger.error('Corrupt payload from Buildbot')
 
-            report_build_res(build_succ, url, info['builderName'], repo_label, state, logger)
+            report_build_res(build_succ, url, info['builderName'], state, logger, repo_cfg)
 
         elif row['event'] == 'buildStarted':
             info = row['payload']['build']
@@ -512,10 +538,11 @@ def travis():
     lazy_debug(logger, lambda: 'state: {}, {}'.format(state, state.build_res_summary()))
 
     if 'travis' not in state.build_res:
-        lazy_debug(logger, lambda: 'travis is not a monitored target for %s', state)
+        lazy_debug(logger, lambda: 'travis is not a monitored target for {}'.format(state))
         return 'OK'
 
-    token = g.repo_cfgs[repo_label]['travis']['token']
+    repo_cfg = g.repo_cfgs[repo_label]
+    token = repo_cfg['travis']['token']
     auth_header = request.headers['Authorization']
     code = hashlib.sha256(('{}/{}{}'.format(state.owner, state.name, token)).encode('utf-8')).hexdigest()
     if auth_header != code:
@@ -530,7 +557,7 @@ def travis():
 
     succ = info['result'] == 0
 
-    report_build_res(succ, info['build_url'], 'travis', repo_label, state, logger)
+    report_build_res(succ, info['build_url'], 'travis', state, logger, repo_cfg)
 
     return 'OK'
 
