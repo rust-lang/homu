@@ -11,6 +11,9 @@ import pkg_resources
 from bottle import get, post, run, request, redirect, abort, response
 import hashlib
 from threading import Thread
+import sys
+import os
+import traceback
 
 import bottle
 bottle.BaseRequest.MEMFILE_MAX = 1024 * 1024 * 10
@@ -53,12 +56,17 @@ def queue(repo_label):
 
     if repo_label == 'all':
         labels = g.repos.keys()
+        multiple = True
     else:
         labels = repo_label.split('+')
+        multiple = len(labels) > 1
 
     states = []
     for label in labels:
-        states += g.states[label].values()
+        try:
+            states += g.states[label].values()
+        except KeyError:
+            abort(404, 'No such repository: {}'.format(label))
 
     pull_states = sorted(states)
 
@@ -75,6 +83,8 @@ def queue(repo_label):
             'head_ref': state.head_ref,
             'mergeable': 'yes' if state.mergeable is True else 'no' if state.mergeable is False else '',
             'assignee': state.assignee,
+            'repo_label': state.repo_label,
+            'repo_url': 'https://github.com/{}/{}'.format(state.owner, state.name),
         })
 
     return g.tpls['queue'].render(
@@ -85,6 +95,7 @@ def queue(repo_label):
         approved=len([x for x in pull_states if x.approved_by]),
         rolled_up=len([x for x in pull_states if x.rollup]),
         failed=len([x for x in pull_states if x.status == 'failure' or x.status == 'error']),
+        multiple=multiple,
     )
 
 
@@ -230,21 +241,25 @@ def github():
             body = info['comment']['body']
             username = info['sender']['login']
 
-            state = g.states[repo_label][pull_num]
+            state = g.states[repo_label].get(pull_num)
+            if state:
+                state.title = info['pull_request']['title']
+                state.body = info['pull_request']['body']
 
-            if parse_commands(
-                body,
-                username,
-                repo_cfg,
-                state,
-                g.my_username,
-                g.db,
-                realtime=True,
-                sha=original_commit_id,
-            ):
-                state.save()
+                if parse_commands(
+                    body,
+                    username,
+                    repo_cfg,
+                    state,
+                    g.my_username,
+                    g.db,
+                    g.states,
+                    realtime=True,
+                    sha=original_commit_id,
+                ):
+                    state.save()
 
-                g.queue_handler()
+                    g.queue_handler()
 
     elif event_type == 'pull_request':
         action = info['action']
@@ -278,6 +293,7 @@ def github():
                         state,
                         g.my_username,
                         g.db,
+                        g.states,
                     ) or found
 
                 status = ''
@@ -297,13 +313,19 @@ def github():
 
         elif action == 'closed':
             state = g.states[repo_label][pull_num]
-            if getattr(state, 'rebased', False):
-                utils.github_set_ref(
-                    state.get_repo(),
-                    'heads/' + state.base_ref,
-                    state.merge_sha,
-                    force=True,
-                )
+            if hasattr(state, 'fake_merge_sha'):
+                def inner():
+                    utils.github_set_ref(
+                        state.get_repo(),
+                        'heads/' + state.base_ref,
+                        state.merge_sha,
+                        force=True,
+                    )
+
+                def fail(err):
+                    state.add_comment(':boom: Failed to recover from the artificial commit. See {} for details. ({})'.format(state.fake_merge_sha, err))
+
+                utils.retry_until(inner, fail, state)
 
             del g.states[repo_label][pull_num]
 
@@ -355,6 +377,7 @@ def github():
                 state,
                 g.my_username,
                 g.db,
+                g.states,
                 realtime=True,
             ):
                 state.save()
@@ -403,13 +426,13 @@ def report_build_res(succ, url, builder, state, logger, repo_cfg):
 
             if state.approved_by and not state.try_:
                 try:
-                    utils.github_set_ref(
-                        state.get_repo(),
-                        'heads/' + state.base_ref,
-                        state.merge_sha,
-                    )
+                    try:
+                        utils.github_set_ref(state.get_repo(), 'heads/' + state.base_ref, state.merge_sha)
+                    except github3.models.GitHubError:
+                        utils.github_create_status(state.get_repo(), state.merge_sha, 'success', '', 'Branch protection bypassed', context='homu')
+                        utils.github_set_ref(state.get_repo(), 'heads/' + state.base_ref, state.merge_sha)
 
-                    state.fake_merged(repo_cfg)
+                    state.fake_merge(repo_cfg)
 
                 except github3.models.GitHubError as e:
                     state.set_status('error')
@@ -435,11 +458,10 @@ def buildbot():
 
     response.content_type = 'text/plain'
 
-    lazy_debug(logger, lambda: 'info: {}'.format(info))
-
     for row in json.loads(request.forms.packets):
         if row['event'] == 'buildFinished':
             info = row['payload']['build']
+            lazy_debug(logger, lambda: 'info: {}'.format(info))
             props = dict(x[:2] for x in info['properties'])
 
             if 'retry' in info['text']:
@@ -514,6 +536,7 @@ def buildbot():
 
         elif row['event'] == 'buildStarted':
             info = row['payload']['build']
+            lazy_debug(logger, lambda: 'info: {}'.format(info))
             props = dict(x[:2] for x in info['properties'])
 
             if not props['revision']:
@@ -640,6 +663,21 @@ def admin():
 
         return 'OK'
 
+    elif request.json['cmd'] == 'sync_all':
+        def inner():
+            for repo_label in g.repos:
+                try:
+                    synchronize(repo_label, g.repo_cfgs[repo_label], g.logger, g.gh, g.states, g.repos, g.db, g.mergeable_que, g.my_username, g.repo_labels)
+                except:
+                    print('* Error while synchronizing {}'.format(repo_label))
+                    traceback.print_exc()
+
+            print('* Done synchronizing all')
+
+        Thread(target=inner).start()
+
+        return 'OK'
+
     return 'Unrecognized command'
 
 
@@ -666,4 +704,8 @@ def start(cfg, states, queue_handler, repo_cfgs, repos, logger, buildbot_slots, 
     g.mergeable_que = mergeable_que
     g.gh = gh
 
-    run(host=cfg['web'].get('host', ''), port=cfg['web']['port'], server='waitress')
+    try:
+        run(host=cfg['web'].get('host', ''), port=cfg['web']['port'], server='waitress')
+    except OSError as e:
+        print(e, file=sys.stderr)
+        os._exit(1)
