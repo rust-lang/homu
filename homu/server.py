@@ -390,10 +390,11 @@ def github():
         except ValueError:
             return 'OK'
 
-        if 'status' not in state.build_res:
-            return 'OK'
-
-        if info['context'] != repo_cfg['status']['context']:
+        status_name = ""
+        for name, value in repo_cfg['status'].items():
+            if 'context' in value and value['context'] == info['context']:
+                status_name = name
+        if status_name is "":
             return 'OK'
 
         if info['state'] == 'pending':
@@ -403,7 +404,7 @@ def github():
             if row['name'] == state.base_ref:
                 return 'OK'
 
-        report_build_res(info['state'] == 'success', info['target_url'], 'status', state, logger, repo_cfg)
+        report_build_res(info['state'] == 'success', info['target_url'], 'status-' + status_name, state, logger, repo_cfg)
 
     return 'OK'
 
