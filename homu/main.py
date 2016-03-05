@@ -572,39 +572,39 @@ def start_build(state, repo_cfgs, buildbot_slots, logger, db, git_cfg):
     if len(builders) is 0:
         raise RuntimeError('Invalid configuration')
 
-    # if state.approved_by and builders == ['status'] and repo_cfg['status']['context'] == 'continuous-integration/travis-ci/push':
-    #     for info in utils.github_iter_statuses(state.get_repo(), state.head_sha):
-    #         if info.context == 'continuous-integration/travis-ci/pr':
-    #             if info.state == 'success':
-    #                 mat = re.search('/builds/([0-9]+)$', info.target_url)
-    #                 if mat:
-    #                     url = 'https://api.travis-ci.org/{}/{}/builds/{}'.format(state.owner, state.name, mat.group(1))
-    #                     res = requests.get(url)
-    #                     travis_sha = json.loads(res.text)['commit']
-    #                     travis_commit = state.get_repo().commit(travis_sha)
-    #                     if travis_commit:
-    #                         base_sha = state.get_repo().ref('heads/' + state.base_ref).object.sha
-    #                         if [travis_commit.parents[0]['sha'], travis_commit.parents[1]['sha']] == [base_sha, state.head_sha]:
-    #                             try:
-    #                                 merge_sha = create_merge(state, repo_cfg, state.base_ref, git_cfg)
-    #                             except subprocess.CalledProcessError:
-    #                                 print('* Unable to create a merge commit for the exempted PR: {}'.format(state))
-    #                                 traceback.print_exc()
-    #                             else:
-    #                                 if merge_sha:
-    #                                     desc = 'Test exempted'
-    #                                     url = info.target_url
+    if state.approved_by and len(builders) == 1 and len(repo_cfg['status']) == 1 and 'context' in repo_cfg['status'][0] and repo_cfg['status'][0]['context'] == 'continuous-integration/travis-ci/push':
+        for info in utils.github_iter_statuses(state.get_repo(), state.head_sha):
+            if info.context == 'continuous-integration/travis-ci/pr':
+                if info.state == 'success':
+                    mat = re.search('/builds/([0-9]+)$', info.target_url)
+                    if mat:
+                        url = 'https://api.travis-ci.org/{}/{}/builds/{}'.format(state.owner, state.name, mat.group(1))
+                        res = requests.get(url)
+                        travis_sha = json.loads(res.text)['commit']
+                        travis_commit = state.get_repo().commit(travis_sha)
+                        if travis_commit:
+                            base_sha = state.get_repo().ref('heads/' + state.base_ref).object.sha
+                            if [travis_commit.parents[0]['sha'], travis_commit.parents[1]['sha']] == [base_sha, state.head_sha]:
+                                try:
+                                    merge_sha = create_merge(state, repo_cfg, state.base_ref, git_cfg)
+                                except subprocess.CalledProcessError:
+                                    print('* Unable to create a merge commit for the exempted PR: {}'.format(state))
+                                    traceback.print_exc()
+                                else:
+                                    if merge_sha:
+                                        desc = 'Test exempted'
+                                        url = info.target_url
 
-    #                                     state.set_status('success')
-    #                                     utils.github_create_status(state.get_repo(), state.head_sha, 'success', url, desc, context='homu')
-    #                                     state.add_comment(':zap: {} - [{}]({})'.format(desc, 'status', url))
+                                        state.set_status('success')
+                                        utils.github_create_status(state.get_repo(), state.head_sha, 'success', url, desc, context='homu')
+                                        state.add_comment(':zap: {} - [{}]({})'.format(desc, 'status', url))
 
-    #                                     state.merge_sha = merge_sha
-    #                                     state.save()
+                                        state.merge_sha = merge_sha
+                                        state.save()
 
-    #                                     state.fake_merge(repo_cfg)
-    #                                     return True
-    #             break
+                                        state.fake_merge(repo_cfg)
+                                        return True
+                break
 
     merge_sha = create_merge(state, repo_cfg, branch, git_cfg)
     if not merge_sha:
