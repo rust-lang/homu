@@ -558,52 +558,53 @@ def start_build(state, repo_cfgs, buildbot_slots, logger, db, git_cfg):
 
     repo_cfg = repo_cfgs[state.repo_label]
 
+    builders = []
     if 'buildbot' in repo_cfg:
         branch = 'try' if state.try_ else 'auto'
         branch = repo_cfg.get('branch', {}).get(branch, branch)
-        builders = repo_cfg['buildbot']['try_builders' if state.try_ else 'builders']
-    elif 'travis' in repo_cfg:
+        builders += repo_cfg['buildbot']['try_builders' if state.try_ else 'builders']
+    if 'travis' in repo_cfg:
         branch = repo_cfg.get('branch', {}).get('auto', 'auto')
-        builders = ['travis']
-    elif 'status' in repo_cfg:
+        builders += ['travis']
+    if 'status' in repo_cfg:
         branch = repo_cfg.get('branch', {}).get('auto', 'auto')
-        builders = ['status']
-    else:
+        builders += ['status-' + key for key, value in repo_cfg['status'].items() if 'context' in value]
+    if len(builders) is 0:
         raise RuntimeError('Invalid configuration')
 
-    if state.approved_by and builders == ['status'] and repo_cfg['status']['context'] == 'continuous-integration/travis-ci/push':
-        for info in utils.github_iter_statuses(state.get_repo(), state.head_sha):
-            if info.context == 'continuous-integration/travis-ci/pr':
-                if info.state == 'success':
-                    mat = re.search('/builds/([0-9]+)$', info.target_url)
-                    if mat:
-                        url = 'https://api.travis-ci.org/{}/{}/builds/{}'.format(state.owner, state.name, mat.group(1))
-                        res = requests.get(url)
-                        travis_sha = json.loads(res.text)['commit']
-                        travis_commit = state.get_repo().commit(travis_sha)
-                        if travis_commit:
-                            base_sha = state.get_repo().ref('heads/' + state.base_ref).object.sha
-                            if [travis_commit.parents[0]['sha'], travis_commit.parents[1]['sha']] == [base_sha, state.head_sha]:
-                                try:
-                                    merge_sha = create_merge(state, repo_cfg, state.base_ref, git_cfg)
-                                except subprocess.CalledProcessError:
-                                    print('* Unable to create a merge commit for the exempted PR: {}'.format(state))
-                                    traceback.print_exc()
-                                else:
-                                    if merge_sha:
-                                        desc = 'Test exempted'
-                                        url = info.target_url
+    # if state.approved_by and builders == ['status'] and repo_cfg['status']['context'] == 'continuous-integration/travis-ci/push':
+    #     for info in utils.github_iter_statuses(state.get_repo(), state.head_sha):
+    #         if info.context == 'continuous-integration/travis-ci/pr':
+    #             if info.state == 'success':
+    #                 mat = re.search('/builds/([0-9]+)$', info.target_url)
+    #                 if mat:
+    #                     url = 'https://api.travis-ci.org/{}/{}/builds/{}'.format(state.owner, state.name, mat.group(1))
+    #                     res = requests.get(url)
+    #                     travis_sha = json.loads(res.text)['commit']
+    #                     travis_commit = state.get_repo().commit(travis_sha)
+    #                     if travis_commit:
+    #                         base_sha = state.get_repo().ref('heads/' + state.base_ref).object.sha
+    #                         if [travis_commit.parents[0]['sha'], travis_commit.parents[1]['sha']] == [base_sha, state.head_sha]:
+    #                             try:
+    #                                 merge_sha = create_merge(state, repo_cfg, state.base_ref, git_cfg)
+    #                             except subprocess.CalledProcessError:
+    #                                 print('* Unable to create a merge commit for the exempted PR: {}'.format(state))
+    #                                 traceback.print_exc()
+    #                             else:
+    #                                 if merge_sha:
+    #                                     desc = 'Test exempted'
+    #                                     url = info.target_url
 
-                                        state.set_status('success')
-                                        utils.github_create_status(state.get_repo(), state.head_sha, 'success', url, desc, context='homu')
-                                        state.add_comment(':zap: {} - [{}]({})'.format(desc, 'status', url))
+    #                                     state.set_status('success')
+    #                                     utils.github_create_status(state.get_repo(), state.head_sha, 'success', url, desc, context='homu')
+    #                                     state.add_comment(':zap: {} - [{}]({})'.format(desc, 'status', url))
 
-                                        state.merge_sha = merge_sha
-                                        state.save()
+    #                                     state.merge_sha = merge_sha
+    #                                     state.save()
 
-                                        state.fake_merge(repo_cfg)
-                                        return True
-                break
+    #                                     state.fake_merge(repo_cfg)
+    #                                     return True
+    #             break
 
     merge_sha = create_merge(state, repo_cfg, branch, git_cfg)
     if not merge_sha:
@@ -979,15 +980,15 @@ def main():
             state.try_ = bool(try_)
             state.rollup = bool(rollup)
             state.delegate = delegate
-
+            builders = []
             if merge_sha:
                 if 'buildbot' in repo_cfg:
-                    builders = repo_cfg['buildbot']['builders']
-                elif 'travis' in repo_cfg:
-                    builders = ['travis']
-                elif 'status' in repo_cfg:
-                    builders = ['status']
-                else:
+                    builders += repo_cfg['buildbot']['builders']
+                if 'travis' in repo_cfg:
+                    builders += ['travis']
+                if 'status' in repo_cfg:
+                    builders += ['status-' + key for key, value in repo_cfg['status'].items() if 'context' in value]
+                if len(builders) is 0:
                     raise RuntimeError('Invalid configuration')
 
                 state.init_build_res(builders, use_db=False)
