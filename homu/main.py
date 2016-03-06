@@ -572,7 +572,7 @@ def start_build(state, repo_cfgs, buildbot_slots, logger, db, git_cfg):
     if len(builders) is 0:
         raise RuntimeError('Invalid configuration')
 
-    if state.approved_by and len(builders) == 1 and len(repo_cfg['status']) == 1 and 'context' in repo_cfg['status'][0] and repo_cfg['status'][0]['context'] == 'continuous-integration/travis-ci/push':
+    if state.approved_by and len(builders) == 1 and 'status' in repo_cfg and len(repo_cfg['status']) == 1 and 'context' in repo_cfg['status'][0] and repo_cfg['status'][0]['context'] == 'continuous-integration/travis-ci/push':
         for info in utils.github_iter_statuses(state.get_repo(), state.head_sha):
             if info.context == 'continuous-integration/travis-ci/pr':
                 if info.state == 'success':
