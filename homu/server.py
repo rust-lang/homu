@@ -391,9 +391,10 @@ def github():
             return 'OK'
 
         status_name = ""
-        for name, value in repo_cfg['status'].items():
-            if 'context' in value and value['context'] == info['context']:
-                status_name = name
+        if 'status' in repo_cfg:
+            for name, value in repo_cfg['status'].items():
+                if 'context' in value and value['context'] == info['context']:
+                    status_name = name
         if status_name is "":
             return 'OK'
 
