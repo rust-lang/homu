@@ -379,11 +379,12 @@ def parse_commands(body, username, repo_cfg, state, my_username, db, states, *, 
             state.save()
 
         elif word == 'force' and realtime:
-            with buildbot_sess(repo_cfg) as sess:
-                res = sess.post(repo_cfg['buildbot']['url'] + '/builders/_selected/stopselected', allow_redirects=False, data={
-                    'selected': repo_cfg['buildbot']['builders'],
-                    'comments': INTERRUPTED_BY_HOMU_FMT.format(int(time.time())),
-                })
+            if 'buildbot' in repo_cfg:
+                with buildbot_sess(repo_cfg) as sess:
+                    res = sess.post(repo_cfg['buildbot']['url'] + '/builders/_selected/stopselected', allow_redirects=False, data={
+                        'selected': repo_cfg['buildbot']['builders'],
+                        'comments': INTERRUPTED_BY_HOMU_FMT.format(int(time.time())),
+                    })
 
             if 'authzfail' in res.text:
                 err = 'Authorization failed'
