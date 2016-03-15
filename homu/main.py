@@ -216,30 +216,17 @@ class PullReqState:
         self.body = issue.body
 
     def fake_merge(self, repo_cfg):
-        if repo_cfg.get('linear', False) or repo_cfg.get('autosquash', False):
-            msg = '''!!! Temporary commit !!!
+        if not repo_cfg.get('linear', False) or repo_cfg.get('autosquash', False):
+            return
 
-This commit is artifically made up to mark PR {} as merged.
-
-If this commit remained in the history, you can safely reset HEAD to {}.
-This is possibly due to protected branches, which forbids force-pushing.
-You are advised to turn off protected branches, or disable certain Homu
-features that require force-pushing, such as linear history or
-auto-squashing.
-
-[ci skip]'''.format(self.num, self.merge_sha)
-
-            def inner():
-                # `merge()` will return `None` if the `head_sha` commit is already part of the `base_ref` branch, which means rebasing didn't have to modify the original commit
-                merge_commit = self.get_repo().merge(self.base_ref, self.head_sha, msg)
-                if merge_commit:
-                    self.fake_merge_sha = merge_commit.sha
-
-            def fail(err):
-                self.add_comment(':warning: Unable to mark this PR as merged. Closing instead. ({})'.format(err))
-                self.get_issue().close()
-
-            utils.retry_until(inner, fail, self)
+        issue = self.get_issue()
+        title = issue.title
+        # We tell github to close the PR via the commit message, but it doesn't know that
+        # constitutes a merge.  Edit the title so that it's clearer.
+        merged_prefix = '[merged] '
+        if not title.startswith(merged_prefix):
+            title = merged_prefix + title
+            issue.edit(title=title)
 
 
 def sha_cmp(short, full):
@@ -497,7 +484,7 @@ def create_merge(state, repo_cfg, branch, git_cfg):
                     if utils.silent_call(['git', '-C', fpath, 'rebase', base_sha]) == 0:
                         desc = 'Auto-squashing failed'
             else:
-                text = '\nPull request: #{}\nApproved by: {}'.format(state.num, '<try>' if state.try_ else state.approved_by)
+                text = '\nCloses: #{}\nApproved by: {}'.format(state.num, '<try>' if state.try_ else state.approved_by)
                 msg_code = 'cat && echo {}'.format(shlex.quote(text))
                 env_code = 'export GIT_COMMITTER_NAME={} && export GIT_COMMITTER_EMAIL={} && unset GIT_COMMITTER_DATE'.format(shlex.quote(git_cfg['name']), shlex.quote(git_cfg['email']))
                 utils.logged_call(['git', '-C', fpath, 'filter-branch', '-f', '--msg-filter', msg_code, '--env-filter', env_code, '{}..'.format(base_sha)])
