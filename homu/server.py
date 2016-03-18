@@ -110,11 +110,17 @@ def callback():
 
     lazy_debug(logger, lambda: 'state: {}'.format(state))
 
-    res = requests.post('https://github.com/login/oauth/access_token', data={
-        'client_id': g.cfg['github']['app_client_id'],
-        'client_secret': g.cfg['github']['app_client_secret'],
-        'code': code,
-    })
+    try:
+        res = requests.post('https://github.com/login/oauth/access_token', data={
+            'client_id': g.cfg['github']['app_client_id'],
+            'client_secret': g.cfg['github']['app_client_secret'],
+            'code': code,
+        })
+    except Exception as ex:
+        logger.warn('/callback encountered an error during github oauth callback')
+        lazy_debug(logger, lambda: 'github oauth callback err: {}'.format(ex))
+        abort(502, 'Bad Gateway')
+
     args = urllib.parse.parse_qs(res.text)
     token = args['access_token'][0]
 
@@ -507,12 +513,17 @@ def buildbot():
                         break
 
                 if step_name:
-                    res = requests.get('{}/builders/{}/builds/{}/steps/{}/logs/interrupt'.format(
-                        repo_cfg['buildbot']['url'],
-                        info['builderName'],
-                        props['buildnumber'],
-                        step_name,
-                    ))
+                    try:
+                        res = requests.get('{}/builders/{}/builds/{}/steps/{}/logs/interrupt'.format(
+                            repo_cfg['buildbot']['url'],
+                            info['builderName'],
+                            props['buildnumber'],
+                            step_name,
+                        ))
+                    except Exception as ex:
+                        logger.warn('/buildbot encountered an error during github logs request')
+                        lazy_debug(logger, lambda: 'buildbot logs err: {}'.format(ex))
+                        abort(502, 'Bad Gateway')
 
                     mat = INTERRUPTED_BY_HOMU_RE.search(res.text)
                     if mat:
