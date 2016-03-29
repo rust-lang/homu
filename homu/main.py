@@ -584,7 +584,7 @@ def start_build(state, repo_cfgs, buildbot_slots, logger, db, git_cfg):
                             res = requests.get(url)
                         except Exception as ex:
                             logger.warn('Unable to gather build info from travis')
-                            lazy_debug(logger, lambda: 'Travis build info error: {}'.format(ex))
+                            utils.lazy_debug(logger, lambda: 'Travis build info error: {}'.format(ex))
                             return False
                         travis_sha = json.loads(res.text)['commit']
                         travis_commit = state.get_repo().commit(travis_sha)
