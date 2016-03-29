@@ -580,7 +580,12 @@ def start_build(state, repo_cfgs, buildbot_slots, logger, db, git_cfg):
                     mat = re.search('/builds/([0-9]+)$', info.target_url)
                     if mat:
                         url = 'https://api.travis-ci.org/{}/{}/builds/{}'.format(state.owner, state.name, mat.group(1))
-                        res = requests.get(url)
+                        try:
+                            res = requests.get(url)
+                        except Exception as ex:
+                            logger.warn('Unable to gather build info from travis')
+                            utils.lazy_debug(logger, lambda: 'Travis build info error: {}'.format(ex))
+                            return False
                         travis_sha = json.loads(res.text)['commit']
                         travis_commit = state.get_repo().commit(travis_sha)
                         if travis_commit:
