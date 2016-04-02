@@ -57,9 +57,13 @@ def queue(repo_label):
     if repo_label == 'all':
         labels = g.repos.keys()
         multiple = True
+        repo_url = None
     else:
         labels = repo_label.split('+')
         multiple = len(labels) > 1
+        repo_url = 'https://github.com/{}/{}'.format(
+            g.cfg['repo'][repo_label]['owner'],
+            g.cfg['repo'][repo_label]['name'])
 
     states = []
     for label in labels:
@@ -88,6 +92,7 @@ def queue(repo_label):
         })
 
     return g.tpls['queue'].render(
+        repo_url=repo_url,
         repo_label=repo_label,
         states=rows,
         oauth_client_id=g.cfg['github']['app_client_id'],
