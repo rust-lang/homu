@@ -560,15 +560,13 @@ def start_build(state, repo_cfgs, buildbot_slots, logger, db, git_cfg):
     repo_cfg = repo_cfgs[state.repo_label]
 
     builders = []
+    branch = 'try' if state.try_ else 'auto'
+    branch = repo_cfg.get('branch', {}).get(branch, branch)
     if 'buildbot' in repo_cfg:
-        branch = 'try' if state.try_ else 'auto'
-        branch = repo_cfg.get('branch', {}).get(branch, branch)
         builders += repo_cfg['buildbot']['try_builders' if state.try_ else 'builders']
     if 'travis' in repo_cfg:
-        branch = repo_cfg.get('branch', {}).get('auto', 'auto')
         builders += ['travis']
     if 'status' in repo_cfg:
-        branch = repo_cfg.get('branch', {}).get('auto', 'auto')
         builders += ['status-' + key for key, value in repo_cfg['status'].items() if 'context' in value]
     if len(builders) is 0:
         raise RuntimeError('Invalid configuration')
