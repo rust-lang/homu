@@ -562,16 +562,29 @@ def start_build(state, repo_cfgs, buildbot_slots, logger, db, git_cfg):
     builders = []
     branch = 'try' if state.try_ else 'auto'
     branch = repo_cfg.get('branch', {}).get(branch, branch)
+    do_travis_exemption = False
     if 'buildbot' in repo_cfg:
         builders += repo_cfg['buildbot']['try_builders' if state.try_ else 'builders']
     if 'travis' in repo_cfg:
         builders += ['travis']
     if 'status' in repo_cfg:
-        builders += ['status-' + key for key, value in repo_cfg['status'].items() if 'context' in value]
+        found_travis_context = False
+        for key, value in repo_cfg['status'].items():
+            context = value.get('context')
+            if context is not None:
+                builders += ['status-' + key]
+                # We have an optional fast path if the Travis test passed for a given
+                # commit and master is unchanged, we can do a direct push.
+                if context == 'continuous-integration/travis-ci/push':
+                    found_travis_context = True
+
+        if found_travis_context and len(builders) == 1:
+            do_travis_exemption = True
+
     if len(builders) is 0:
         raise RuntimeError('Invalid configuration')
 
-    if state.approved_by and len(builders) == 1 and 'status' in repo_cfg and len(repo_cfg['status']) == 1 and 'context' in repo_cfg['status'][0] and repo_cfg['status'][0]['context'] == 'continuous-integration/travis-ci/push':
+    if (state.approved_by and do_travis_exemption):
         for info in utils.github_iter_statuses(state.get_repo(), state.head_sha):
             if info.context == 'continuous-integration/travis-ci/pr':
                 if info.state == 'success':
