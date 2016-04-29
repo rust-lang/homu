@@ -30,7 +30,7 @@
         </style>
     </head>
     <body>
-        <h1>Homu queue - {{repo_label}}</h1>
+        <h1>Homu queue - {% if repo_url %}<a href="{{repo_url}}" target="_blank">{{repo_label}}</a>{% else %}{{repo_label}}{% endif %}</h1>
 
         <p>
             <button type="button" id="rollup">Create a rollup</button>
