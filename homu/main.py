@@ -906,10 +906,14 @@ def main():
 
     gh = github3.login(token=cfg['github']['access_token'])
     user = gh.user()
-    try:
-        user_email = [x for x in gh.iter_emails() if x['primary']][0]['email']
-    except IndexError:
-        raise RuntimeError('Primary email not set, or "user" scope not granted')
+    cfg_git = cfg.get('git', {})
+    user_email = cfg_git.get('email')
+    if user_email is None:
+        try:
+            user_email = [x for x in gh.iter_emails() if x['primary']][0]['email']
+        except IndexError:
+            raise RuntimeError('Primary email not set, or "user" scope not granted')
+    user_name = cfg_git.get('name', user.name if user.name else user.login)
 
     states = {}
     repos = {}
@@ -919,10 +923,10 @@ def main():
     repo_labels = {}
     mergeable_que = Queue()
     git_cfg = {
-        'name': user.name if user.name else user.login,
+        'name': user_name,
         'email': user_email,
-        'ssh_key': cfg.get('git', {}).get('ssh_key', ''),
-        'local_git': cfg.get('git', {}).get('local_git', False),
+        'ssh_key': cfg_git.get('ssh_key', ''),
+        'local_git': cfg_git.get('local_git', False),
     }
 
     db_conn = sqlite3.connect('main.db', check_same_thread=False, isolation_level=None)
