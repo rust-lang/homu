@@ -20,6 +20,12 @@ app_client_secret = ""
 #ssh_key = """
 #"""
 
+# By default, Homu extracts the name+email from the Github account.  However,
+# you may want to use a private email for the account, and associate the commits
+# with a public email address.
+#user = "Some Cool Project Bot"
+#email = "coolprojectbot-devel@example.com"
+
 [web]
 
 # The port homu listens on
