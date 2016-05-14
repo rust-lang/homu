@@ -435,9 +435,11 @@ def report_build_res(succ, url, builder, state, logger, repo_cfg):
             utils.github_create_status(state.get_repo(), state.head_sha, 'success', url, desc, context='homu')
 
             urls = ', '.join('[{}]({})'.format(builder, x['url']) for builder, x in sorted(state.build_res.items()))
-            state.add_comment(':sunny: {} - {}'.format(desc, urls))
+            test_comment = ':sunny: {} - {}'.format(desc, urls)
 
             if state.approved_by and not state.try_:
+                comment = test_comment + '\n' + 'Approved by: {}\nPushing {} to {}...'.format(state.approved_by, state.merge_sha, state.base_ref)
+                state.add_comment(comment)
                 try:
                     try:
                         utils.github_set_ref(state.get_repo(), 'heads/' + state.base_ref, state.merge_sha)
@@ -453,6 +455,9 @@ def report_build_res(succ, url, builder, state, logger, repo_cfg):
                     utils.github_create_status(state.get_repo(), state.head_sha, 'error', url, desc, context='homu')
 
                     state.add_comment(':eyes: ' + desc)
+            else:
+                comment = test_comment + '\n' + 'State: approved={} try={}'.format(state.approved_by, state.try_)
+                state.add_comment(comment)
 
     else:
         if state.status == 'pending':
