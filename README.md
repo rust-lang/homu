@@ -92,7 +92,7 @@ pip install -e homu
  - Payload URL: `http://HOST:PORT/github`
  - Content type: `application/json`
  - Secret: The same as `repo.NAME.github.secret` in cfg.toml
- - Events: Issue Comment, Pull Request, Push
+ - Events: `Issue Comment`, `Pull Request`, `Push`, `Status`
 
 4. Add a Webhook to your continuous integration service:
 
