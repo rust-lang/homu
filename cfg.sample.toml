@@ -50,6 +50,11 @@ try_users = []
 # Auto-squash commits. Requires the local Git command
 #autosquash = true
 
+# If the PR already has the same success statuses that we expect on the auto
+# branch, then push directly to branch if safe to do so. Requires the local Git
+# command.
+#status_based_exemption = false
+
 ## branch names (these settings here are the defaults)
 #[repo.NAME.branch]
 #

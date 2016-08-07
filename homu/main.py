@@ -559,6 +559,32 @@ def create_merge(state, repo_cfg, branch, git_cfg):
     return ''
 
 
+def pull_is_rebased(state, repo_cfg, git_cfg, base_sha):
+    assert git_cfg['local_git']
+    git_cmd = init_local_git_cmds(repo_cfg, git_cfg)
+
+    utils.logged_call(git_cmd('fetch', 'origin', state.base_ref,
+                              'pull/{}/head'.format(state.num)))
+
+    return utils.silent_call(git_cmd('merge-base', '--is-ancestor',
+                                     base_sha, state.head_sha)) == 0
+
+
+# We could fetch this from GitHub instead, but that API is being deprecated:
+# https://developer.github.com/changes/2013-04-25-deprecating-merge-commit-sha/
+def get_github_merge_sha(state, repo_cfg, git_cfg):
+    assert git_cfg['local_git']
+    git_cmd = init_local_git_cmds(repo_cfg, git_cfg)
+
+    if state.mergeable is not True:
+        return None
+
+    utils.logged_call(git_cmd('fetch', 'origin',
+                              'pull/{}/merge'.format(state.num)))
+
+    return subprocess.check_output(git_cmd('rev-parse', 'FETCH_HEAD')).decode('ascii').strip()
+
+
 def do_exemption_merge(state, repo_cfg, git_cfg, url, reason):
 
     try:
@@ -626,6 +652,59 @@ def try_travis_exemption(state, repo_cfg, git_cfg):
     return False
 
 
+def try_status_exemption(state, repo_cfg, git_cfg, builders):
+
+    # If all the builders are status-based, then we can do some checks to
+    # exempt testing under the following cases:
+    #   1. The PR head commit has those same statuses set to state 'success' and
+    #      it is fully rebased on the HEAD of the target base ref.
+    #   2. The PR head and merge commits have those same statuses set to state
+    #      'success' and the merge commit's first parent is the HEAD of the
+    #      target base ref.
+
+    if not git_cfg['local_git']:
+        raise RuntimeError('local_git is required to use status exemption')
+
+    statuses_all = set(builders)
+    assert len(statuses_all) > 0
+
+    # let's first check that all the statuses we want are set to success
+    statuses_pass = set()
+    for info in utils.github_iter_statuses(state.get_repo(), state.head_sha):
+        context = 'status-' + info.context
+        if context in statuses_all and info.state == 'success':
+            statuses_pass.add(context)
+
+    if statuses_all != statuses_pass:
+        return False
+
+    # is the PR fully rebased?
+    base_sha = state.get_repo().ref('heads/' + state.base_ref).object.sha
+    if pull_is_rebased(state, repo_cfg, git_cfg, base_sha):
+        return do_exemption_merge(state, repo_cfg, git_cfg, '',
+                                  "pull fully rebased and already tested")
+
+    # check if we can use the github merge sha as proof
+    merge_sha = get_github_merge_sha(state, repo_cfg, git_cfg)
+    if merge_sha is None:
+        return False
+
+    statuses_merge_pass = set()
+    for info in utils.github_iter_statuses(state.get_repo(), merge_sha):
+        context = 'status-' + info.context
+        if context in statuses_all and info.state == 'success':
+            statuses_merge_pass.add(context)
+
+    merge_commit = state.get_repo().commit(merge_sha)
+    if (statuses_all == statuses_merge_pass and
+            merge_commit.parents[0]['sha'] == base_sha and
+            merge_commit.parents[1]['sha'] == state.head_sha):
+        return do_exemption_merge(state, repo_cfg, git_cfg, '',
+                                  "merge already tested")
+
+    return False
+
+
 def start_build(state, repo_cfgs, buildbot_slots, logger, db, git_cfg):
     if buildbot_slots[0]:
         return True
@@ -638,10 +717,14 @@ def start_build(state, repo_cfgs, buildbot_slots, logger, db, git_cfg):
     branch = 'try' if state.try_ else 'auto'
     branch = repo_cfg.get('branch', {}).get(branch, branch)
     can_try_travis_exemption = False
+
+    only_status_builders = True
     if 'buildbot' in repo_cfg:
         builders += repo_cfg['buildbot']['try_builders' if state.try_ else 'builders']
+        only_status_builders = False
     if 'travis' in repo_cfg:
         builders += ['travis']
+        only_status_builders = False
     if 'status' in repo_cfg:
         found_travis_context = False
         for key, value in repo_cfg['status'].items():
@@ -656,7 +739,6 @@ def start_build(state, repo_cfgs, buildbot_slots, logger, db, git_cfg):
         if found_travis_context and len(builders) == 1:
             can_try_travis_exemption = True
 
-
     if len(builders) is 0:
         raise RuntimeError('Invalid configuration')
 
@@ -664,6 +746,10 @@ def start_build(state, repo_cfgs, buildbot_slots, logger, db, git_cfg):
         if try_travis_exemption(state, repo_cfg, git_cfg):
             return True
 
+    if (only_status_builders and state.approved_by and
+            repo_cfg.get('status_based_exemption', False)):
+        if try_status_exemption(state, repo_cfg, git_cfg, builders):
+            return True
 
     merge_sha = create_merge(state, repo_cfg, branch, git_cfg)
     if not merge_sha:
