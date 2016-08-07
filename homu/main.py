@@ -420,12 +420,12 @@ def parse_commands(body, username, repo_cfg, state, my_username, db, states, *, 
     return state_changed
 
 
-def git_push(fpath, branch, state):
-    merge_sha = subprocess.check_output(['git', '-C', fpath, 'rev-parse', 'HEAD']).decode('ascii').strip()
+def git_push(git_cmd, branch, state):
+    merge_sha = subprocess.check_output(git_cmd('rev-parse', 'HEAD')).decode('ascii').strip()
 
-    if utils.silent_call(['git', '-C', fpath, 'push', '-f', 'origin', branch]):
-        utils.logged_call(['git', '-C', fpath, 'branch', '-f', 'homu-tmp', branch])
-        utils.logged_call(['git', '-C', fpath, 'push', '-f', 'origin', 'homu-tmp'])
+    if utils.silent_call(git_cmd('push', '-f', 'origin', branch)):
+        utils.logged_call(git_cmd('branch', '-f', 'homu-tmp', branch))
+        utils.logged_call(git_cmd('push', '-f', 'origin', 'homu-tmp'))
 
         def inner():
             utils.github_create_status(state.get_repo(), merge_sha, 'success', '', 'Branch protection bypassed', context='homu')
@@ -435,9 +435,26 @@ def git_push(fpath, branch, state):
 
         utils.retry_until(inner, fail, state)
 
-        utils.logged_call(['git', '-C', fpath, 'push', '-f', 'origin', branch])
+        utils.logged_call(git_cmd('push', '-f', 'origin', branch))
 
     return merge_sha
+
+
+def init_local_git_cmds(repo_cfg, git_cfg):
+    fpath = 'cache/{}/{}'.format(repo_cfg['owner'], repo_cfg['name'])
+    url = 'git@github.com:{}/{}.git'.format(repo_cfg['owner'], repo_cfg['name'])
+
+    if not os.path.exists(SSH_KEY_FILE):
+        os.makedirs(os.path.dirname(SSH_KEY_FILE), exist_ok=True)
+        with open(SSH_KEY_FILE, 'w') as fp:
+            fp.write(git_cfg['ssh_key'])
+        os.chmod(SSH_KEY_FILE, 0o600)
+
+    if not os.path.exists(fpath):
+        utils.logged_call(['git', 'init', fpath])
+        utils.logged_call(['git', '-C', fpath, 'remote', 'add', 'origin', url])
+
+    return lambda *args: ['git', '-C', fpath] + list(args)
 
 
 def create_merge(state, repo_cfg, branch, git_cfg):
@@ -456,61 +473,64 @@ def create_merge(state, repo_cfg, branch, git_cfg):
     desc = 'Merge conflict'
 
     if git_cfg['local_git']:
-        state.get_repo().pull_request(state.num)
 
-        fpath = 'cache/{}/{}'.format(repo_cfg['owner'], repo_cfg['name'])
-        url = 'git@github.com:{}/{}.git'.format(repo_cfg['owner'], repo_cfg['name'])
+        git_cmd = init_local_git_cmds(repo_cfg, git_cfg)
 
-        os.makedirs(os.path.dirname(SSH_KEY_FILE), exist_ok=True)
-        with open(SSH_KEY_FILE, 'w') as fp:
-            fp.write(git_cfg['ssh_key'])
-        os.chmod(SSH_KEY_FILE, 0o600)
-
-        if not os.path.exists(fpath):
-            utils.logged_call(['git', 'init', fpath])
-            utils.logged_call(['git', '-C', fpath, 'remote', 'add', 'origin', url])
-
-        utils.logged_call(['git', '-C', fpath, 'fetch', 'origin', state.base_ref, 'pull/{}/head'.format(state.num)])
-
-        utils.silent_call(['git', '-C', fpath, 'rebase', '--abort'])
-        utils.silent_call(['git', '-C', fpath, 'merge', '--abort'])
+        utils.logged_call(git_cmd('fetch', 'origin', state.base_ref,
+                                  'pull/{}/head'.format(state.num)))
+        utils.silent_call(git_cmd('rebase', '--abort'))
+        utils.silent_call(git_cmd('merge', '--abort'))
 
         if repo_cfg.get('linear', False):
-            utils.logged_call(['git', '-C', fpath, 'checkout', '-B', branch, state.head_sha])
+            utils.logged_call(git_cmd('checkout', '-B', branch, state.head_sha))
             try:
-                utils.logged_call(['git', '-C', fpath, '-c', 'user.name=' + git_cfg['name'], '-c', 'user.email=' + git_cfg['email'], 'rebase'] + (['-i', '--autosquash'] if repo_cfg.get('autosquash', False) else []) + [base_sha])
+                args = [base_sha]
+                if repo_cfg.get('autosquash', False):
+                    args += ['-i', '--autosquash']
+                utils.logged_call(git_cmd('-c', 'user.name=' + git_cfg['name'],
+                                          '-c', 'user.email=' + git_cfg['email'],
+                                          'rebase', *args))
             except subprocess.CalledProcessError:
                 if repo_cfg.get('autosquash', False):
-                    utils.silent_call(['git', '-C', fpath, 'rebase', '--abort'])
-                    if utils.silent_call(['git', '-C', fpath, 'rebase', base_sha]) == 0:
+                    utils.silent_call(git_cmd('rebase', '--abort'))
+                    if utils.silent_call(git_cmd('rebase', base_sha)) == 0:
                         desc = 'Auto-squashing failed'
             else:
                 text = '\nCloses: #{}\nApproved by: {}'.format(state.num, '<try>' if state.try_ else state.approved_by)
                 msg_code = 'cat && echo {}'.format(shlex.quote(text))
                 env_code = 'export GIT_COMMITTER_NAME={} && export GIT_COMMITTER_EMAIL={} && unset GIT_COMMITTER_DATE'.format(shlex.quote(git_cfg['name']), shlex.quote(git_cfg['email']))
-                utils.logged_call(['git', '-C', fpath, 'filter-branch', '-f', '--msg-filter', msg_code, '--env-filter', env_code, '{}..'.format(base_sha)])
+                utils.logged_call(git_cmd('filter-branch', '-f',
+                                          '--msg-filter', msg_code,
+                                          '--env-filter', env_code,
+                                          '{}..'.format(base_sha)))
 
-                return git_push(fpath, branch, state)
+                return git_push(git_cmd, branch, state)
         else:
-            utils.logged_call(['git', '-C', fpath, 'checkout', '-B', 'homu-tmp', state.head_sha])
+            utils.logged_call(git_cmd('checkout', '-B', 'homu-tmp', state.head_sha))
 
             ok = True
             if repo_cfg.get('autosquash', False):
                 try:
-                    merge_base_sha = subprocess.check_output(['git', '-C', fpath, 'merge-base', base_sha, state.head_sha]).decode('ascii').strip()
-                    utils.logged_call(['git', '-C', fpath, '-c', 'user.name=' + git_cfg['name'], '-c', 'user.email=' + git_cfg['email'], 'rebase', '-i', '--autosquash', '--onto', merge_base_sha, base_sha])
+                    merge_base_sha = subprocess.check_output(
+                        git_cmd('merge-base', base_sha, state.head_sha)).decode('ascii').strip()
+                    utils.logged_call(git_cmd('-c', 'user.name=' + git_cfg['name'],
+                                              '-c', 'user.email=' + git_cfg['email'],
+                                              'rebase', '-i', '--autosquash',
+                                              '--onto', merge_base_sha, base_sha))
                 except subprocess.CalledProcessError:
                     desc = 'Auto-squashing failed'
                     ok = False
 
             if ok:
-                utils.logged_call(['git', '-C', fpath, 'checkout', '-B', branch, base_sha])
+                utils.logged_call(git_cmd('checkout', '-B', branch, base_sha))
                 try:
-                    utils.logged_call(['git', '-C', fpath, '-c', 'user.name=' + git_cfg['name'], '-c', 'user.email=' + git_cfg['email'], 'merge', 'heads/homu-tmp', '-m', merge_msg])
+                    utils.logged_call(git_cmd('-c', 'user.name=' + git_cfg['name'],
+                                              '-c', 'user.email=' + git_cfg['email'],
+                                              'merge', 'heads/homu-tmp', '-m', merge_msg))
                 except subprocess.CalledProcessError:
                     pass
                 else:
-                    return git_push(fpath, branch, state)
+                    return git_push(git_cmd, branch, state)
     else:
         if repo_cfg.get('linear', False) or repo_cfg.get('autosquash', False):
             raise RuntimeError('local_git must be turned on to use this feature')
