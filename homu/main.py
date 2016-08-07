@@ -559,6 +559,73 @@ def create_merge(state, repo_cfg, branch, git_cfg):
     return ''
 
 
+def do_exemption_merge(state, repo_cfg, git_cfg, url, reason):
+
+    try:
+        merge_sha = create_merge(state, repo_cfg, state.base_ref, git_cfg)
+    except subprocess.CalledProcessError:
+        print('* Unable to create a merge commit for the exempted PR: {}'.format(state))
+        traceback.print_exc()
+        return False
+
+    if not merge_sha:
+        return False
+
+    desc = 'Test exempted'
+
+    state.set_status('success')
+    utils.github_create_status(state.get_repo(), state.head_sha, 'success',
+                               url, desc, context='homu')
+    state.add_comment(':zap: {}: {}.'.format(desc, reason))
+
+    state.merge_sha = merge_sha
+    state.save()
+
+    state.fake_merge(repo_cfg)
+    return True
+
+
+def try_travis_exemption(state, repo_cfg, git_cfg):
+
+    travis_info = None
+    for info in utils.github_iter_statuses(state.get_repo(), state.head_sha):
+        if info.context == 'continuous-integration/travis-ci/pr':
+            travis_info = info
+            break
+
+    if travis_info is None or travis_info.state != 'success':
+        return False
+
+    mat = re.search('/builds/([0-9]+)$', travis_info.target_url)
+    if not mat:
+        return False
+
+    url = 'https://api.travis-ci.org/{}/{}/builds/{}'.format(state.owner,
+                                                             state.name,
+                                                             mat.group(1))
+    try:
+        res = requests.get(url)
+    except Exception as ex:
+        print('* Unable to gather build info from Travis CI: {}'.format(ex))
+        return False
+
+    travis_sha = json.loads(res.text)['commit']
+    travis_commit = state.get_repo().commit(travis_sha)
+
+    if not travis_commit:
+        return False
+
+    base_sha = state.get_repo().ref('heads/' + state.base_ref).object.sha
+
+    if (travis_commit.parents[0]['sha'] == base_sha and
+            travis_commit.parents[1]['sha'] == state.head_sha):
+        return do_exemption_merge(state, repo_cfg, git_cfg,
+                                  travis_info.target_url,
+                                  "merge already tested by Travis CI")
+
+    return False
+
+
 def start_build(state, repo_cfgs, buildbot_slots, logger, db, git_cfg):
     if buildbot_slots[0]:
         return True
@@ -570,7 +637,7 @@ def start_build(state, repo_cfgs, buildbot_slots, logger, db, git_cfg):
     builders = []
     branch = 'try' if state.try_ else 'auto'
     branch = repo_cfg.get('branch', {}).get(branch, branch)
-    do_travis_exemption = False
+    can_try_travis_exemption = False
     if 'buildbot' in repo_cfg:
         builders += repo_cfg['buildbot']['try_builders' if state.try_ else 'builders']
     if 'travis' in repo_cfg:
@@ -587,49 +654,16 @@ def start_build(state, repo_cfgs, buildbot_slots, logger, db, git_cfg):
                     found_travis_context = True
 
         if found_travis_context and len(builders) == 1:
-            do_travis_exemption = True
+            can_try_travis_exemption = True
+
 
     if len(builders) is 0:
         raise RuntimeError('Invalid configuration')
 
-    if (state.approved_by and do_travis_exemption):
-        for info in utils.github_iter_statuses(state.get_repo(), state.head_sha):
-            if info.context == 'continuous-integration/travis-ci/pr':
-                if info.state == 'success':
-                    mat = re.search('/builds/([0-9]+)$', info.target_url)
-                    if mat:
-                        url = 'https://api.travis-ci.org/{}/{}/builds/{}'.format(state.owner, state.name, mat.group(1))
-                        try:
-                            res = requests.get(url)
-                        except Exception as ex:
-                            logger.warn('Unable to gather build info from travis')
-                            utils.lazy_debug(logger, lambda: 'Travis build info error: {}'.format(ex))
-                            return False
-                        travis_sha = json.loads(res.text)['commit']
-                        travis_commit = state.get_repo().commit(travis_sha)
-                        if travis_commit:
-                            base_sha = state.get_repo().ref('heads/' + state.base_ref).object.sha
-                            if [travis_commit.parents[0]['sha'], travis_commit.parents[1]['sha']] == [base_sha, state.head_sha]:
-                                try:
-                                    merge_sha = create_merge(state, repo_cfg, state.base_ref, git_cfg)
-                                except subprocess.CalledProcessError:
-                                    print('* Unable to create a merge commit for the exempted PR: {}'.format(state))
-                                    traceback.print_exc()
-                                else:
-                                    if merge_sha:
-                                        desc = 'Test exempted'
-                                        url = info.target_url
+    if can_try_travis_exemption and state.approved_by:
+        if try_travis_exemption(state, repo_cfg, git_cfg):
+            return True
 
-                                        state.set_status('success')
-                                        utils.github_create_status(state.get_repo(), state.head_sha, 'success', url, desc, context='homu')
-                                        state.add_comment(':zap: {} - [{}]({})'.format(desc, 'status', url))
-
-                                        state.merge_sha = merge_sha
-                                        state.save()
-
-                                        state.fake_merge(repo_cfg)
-                                        return True
-                break
 
     merge_sha = create_merge(state, repo_cfg, branch, git_cfg)
     if not merge_sha:
