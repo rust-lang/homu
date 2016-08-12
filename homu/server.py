@@ -123,8 +123,8 @@ def callback():
         })
     except Exception as ex:
         logger.warn('/callback encountered an error during github oauth callback')
-        s = 'github oauth callback err: {}'.format(ex)
-        lazy_debug(logger, lambda: s)
+        # probably related to https://gitlab.com/pycqa/flake8/issues/42
+        lazy_debug(logger, lambda: 'github oauth callback err: {}'.format(ex)) # NOQA
         abort(502, 'Bad Gateway')
 
     args = urllib.parse.parse_qs(res.text)
@@ -533,8 +533,8 @@ def buildbot():
                         ))
                     except Exception as ex:
                         logger.warn('/buildbot encountered an error during github logs request')
-                        s = 'buildbot logs err: {}'.format(ex)
-                        lazy_debug(logger, lambda: s)
+                        # probably related to https://gitlab.com/pycqa/flake8/issues/42
+                        lazy_debug(logger, lambda: 'buildbot logs err: {}'.format(ex)) # NOQA
                         abort(502, 'Bad Gateway')
 
                     mat = INTERRUPTED_BY_HOMU_RE.search(res.text)
