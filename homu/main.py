@@ -652,28 +652,38 @@ def try_travis_exemption(state, repo_cfg, git_cfg):
     return False
 
 
-def try_status_exemption(state, repo_cfg, git_cfg, builders):
+def try_status_exemption(state, repo_cfg, git_cfg):
 
     # If all the builders are status-based, then we can do some checks to
     # exempt testing under the following cases:
-    #   1. The PR head commit has those same statuses set to state 'success' and
+    #   1. The PR head commit has the equivalent statuses set to 'success' and
     #      it is fully rebased on the HEAD of the target base ref.
-    #   2. The PR head and merge commits have those same statuses set to state
-    #      'success' and the merge commit's first parent is the HEAD of the
+    #   2. The PR head and merge commits have the equivalent statuses set to
+    #      state 'success' and the merge commit's first parent is the HEAD of the
     #      target base ref.
 
     if not git_cfg['local_git']:
         raise RuntimeError('local_git is required to use status exemption')
 
-    statuses_all = set(builders)
+    statuses_all = set()
+
+    # equivalence dict: pr context --> auto context
+    status_equivalences = {}
+
+    for key, value in repo_cfg['status'].items():
+        context = value.get('context')
+        pr_context = value.get('pr_context', context)
+        if context is not None:
+            statuses_all.add(context)
+            status_equivalences[pr_context] = context
+
     assert len(statuses_all) > 0
 
     # let's first check that all the statuses we want are set to success
     statuses_pass = set()
     for info in utils.github_iter_statuses(state.get_repo(), state.head_sha):
-        context = 'status-' + info.context
-        if context in statuses_all and info.state == 'success':
-            statuses_pass.add(context)
+        if info.context in status_equivalences and info.state == 'success':
+            statuses_pass.add(status_equivalences[info.context])
 
     if statuses_all != statuses_pass:
         return False
@@ -691,9 +701,8 @@ def try_status_exemption(state, repo_cfg, git_cfg, builders):
 
     statuses_merge_pass = set()
     for info in utils.github_iter_statuses(state.get_repo(), merge_sha):
-        context = 'status-' + info.context
-        if context in statuses_all and info.state == 'success':
-            statuses_merge_pass.add(context)
+        if info.context in status_equivalences and info.state == 'success':
+            statuses_merge_pass.add(status_equivalences[info.context])
 
     merge_commit = state.get_repo().commit(merge_sha)
     if (statuses_all == statuses_merge_pass and
@@ -748,7 +757,7 @@ def start_build(state, repo_cfgs, buildbot_slots, logger, db, git_cfg):
 
     if (only_status_builders and state.approved_by and
             repo_cfg.get('status_based_exemption', False)):
-        if try_status_exemption(state, repo_cfg, git_cfg, builders):
+        if try_status_exemption(state, repo_cfg, git_cfg):
             return True
 
     merge_sha = create_merge(state, repo_cfg, branch, git_cfg)

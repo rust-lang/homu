@@ -90,3 +90,8 @@ secret = ""
 #
 ## String label set by status updates
 #context = ""
+#
+## Equivalent context to look for on the PR itself if checking whether the
+## build should be exempted. If omitted, looks for the same context. This is
+## only used if status_based_exemption is true.
+#pr_context = ""
