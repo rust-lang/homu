@@ -420,12 +420,12 @@ def parse_commands(body, username, repo_cfg, state, my_username, db, states, *, 
     return state_changed
 
 
-def git_push(fpath, branch, state):
-    merge_sha = subprocess.check_output(['git', '-C', fpath, 'rev-parse', 'HEAD']).decode('ascii').strip()
+def git_push(git_cmd, branch, state):
+    merge_sha = subprocess.check_output(git_cmd('rev-parse', 'HEAD')).decode('ascii').strip()
 
-    if utils.silent_call(['git', '-C', fpath, 'push', '-f', 'origin', branch]):
-        utils.logged_call(['git', '-C', fpath, 'branch', '-f', 'homu-tmp', branch])
-        utils.logged_call(['git', '-C', fpath, 'push', '-f', 'origin', 'homu-tmp'])
+    if utils.silent_call(git_cmd('push', '-f', 'origin', branch)):
+        utils.logged_call(git_cmd('branch', '-f', 'homu-tmp', branch))
+        utils.logged_call(git_cmd('push', '-f', 'origin', 'homu-tmp'))
 
         def inner():
             utils.github_create_status(state.get_repo(), merge_sha, 'success', '', 'Branch protection bypassed', context='homu')
@@ -435,9 +435,26 @@ def git_push(fpath, branch, state):
 
         utils.retry_until(inner, fail, state)
 
-        utils.logged_call(['git', '-C', fpath, 'push', '-f', 'origin', branch])
+        utils.logged_call(git_cmd('push', '-f', 'origin', branch))
 
     return merge_sha
+
+
+def init_local_git_cmds(repo_cfg, git_cfg):
+    fpath = 'cache/{}/{}'.format(repo_cfg['owner'], repo_cfg['name'])
+    url = 'git@github.com:{}/{}.git'.format(repo_cfg['owner'], repo_cfg['name'])
+
+    if not os.path.exists(SSH_KEY_FILE):
+        os.makedirs(os.path.dirname(SSH_KEY_FILE), exist_ok=True)
+        with open(SSH_KEY_FILE, 'w') as fp:
+            fp.write(git_cfg['ssh_key'])
+        os.chmod(SSH_KEY_FILE, 0o600)
+
+    if not os.path.exists(fpath):
+        utils.logged_call(['git', 'init', fpath])
+        utils.logged_call(['git', '-C', fpath, 'remote', 'add', 'origin', url])
+
+    return lambda *args: ['git', '-C', fpath] + list(args)
 
 
 def create_merge(state, repo_cfg, branch, git_cfg):
@@ -456,61 +473,64 @@ def create_merge(state, repo_cfg, branch, git_cfg):
     desc = 'Merge conflict'
 
     if git_cfg['local_git']:
-        state.get_repo().pull_request(state.num)
 
-        fpath = 'cache/{}/{}'.format(repo_cfg['owner'], repo_cfg['name'])
-        url = 'git@github.com:{}/{}.git'.format(repo_cfg['owner'], repo_cfg['name'])
+        git_cmd = init_local_git_cmds(repo_cfg, git_cfg)
 
-        os.makedirs(os.path.dirname(SSH_KEY_FILE), exist_ok=True)
-        with open(SSH_KEY_FILE, 'w') as fp:
-            fp.write(git_cfg['ssh_key'])
-        os.chmod(SSH_KEY_FILE, 0o600)
-
-        if not os.path.exists(fpath):
-            utils.logged_call(['git', 'init', fpath])
-            utils.logged_call(['git', '-C', fpath, 'remote', 'add', 'origin', url])
-
-        utils.logged_call(['git', '-C', fpath, 'fetch', 'origin', state.base_ref, 'pull/{}/head'.format(state.num)])
-
-        utils.silent_call(['git', '-C', fpath, 'rebase', '--abort'])
-        utils.silent_call(['git', '-C', fpath, 'merge', '--abort'])
+        utils.logged_call(git_cmd('fetch', 'origin', state.base_ref,
+                                  'pull/{}/head'.format(state.num)))
+        utils.silent_call(git_cmd('rebase', '--abort'))
+        utils.silent_call(git_cmd('merge', '--abort'))
 
         if repo_cfg.get('linear', False):
-            utils.logged_call(['git', '-C', fpath, 'checkout', '-B', branch, state.head_sha])
+            utils.logged_call(git_cmd('checkout', '-B', branch, state.head_sha))
             try:
-                utils.logged_call(['git', '-C', fpath, '-c', 'user.name=' + git_cfg['name'], '-c', 'user.email=' + git_cfg['email'], 'rebase'] + (['-i', '--autosquash'] if repo_cfg.get('autosquash', False) else []) + [base_sha])
+                args = [base_sha]
+                if repo_cfg.get('autosquash', False):
+                    args += ['-i', '--autosquash']
+                utils.logged_call(git_cmd('-c', 'user.name=' + git_cfg['name'],
+                                          '-c', 'user.email=' + git_cfg['email'],
+                                          'rebase', *args))
             except subprocess.CalledProcessError:
                 if repo_cfg.get('autosquash', False):
-                    utils.silent_call(['git', '-C', fpath, 'rebase', '--abort'])
-                    if utils.silent_call(['git', '-C', fpath, 'rebase', base_sha]) == 0:
+                    utils.silent_call(git_cmd('rebase', '--abort'))
+                    if utils.silent_call(git_cmd('rebase', base_sha)) == 0:
                         desc = 'Auto-squashing failed'
             else:
                 text = '\nCloses: #{}\nApproved by: {}'.format(state.num, '<try>' if state.try_ else state.approved_by)
                 msg_code = 'cat && echo {}'.format(shlex.quote(text))
                 env_code = 'export GIT_COMMITTER_NAME={} && export GIT_COMMITTER_EMAIL={} && unset GIT_COMMITTER_DATE'.format(shlex.quote(git_cfg['name']), shlex.quote(git_cfg['email']))
-                utils.logged_call(['git', '-C', fpath, 'filter-branch', '-f', '--msg-filter', msg_code, '--env-filter', env_code, '{}..'.format(base_sha)])
+                utils.logged_call(git_cmd('filter-branch', '-f',
+                                          '--msg-filter', msg_code,
+                                          '--env-filter', env_code,
+                                          '{}..'.format(base_sha)))
 
-                return git_push(fpath, branch, state)
+                return git_push(git_cmd, branch, state)
         else:
-            utils.logged_call(['git', '-C', fpath, 'checkout', '-B', 'homu-tmp', state.head_sha])
+            utils.logged_call(git_cmd('checkout', '-B', 'homu-tmp', state.head_sha))
 
             ok = True
             if repo_cfg.get('autosquash', False):
                 try:
-                    merge_base_sha = subprocess.check_output(['git', '-C', fpath, 'merge-base', base_sha, state.head_sha]).decode('ascii').strip()
-                    utils.logged_call(['git', '-C', fpath, '-c', 'user.name=' + git_cfg['name'], '-c', 'user.email=' + git_cfg['email'], 'rebase', '-i', '--autosquash', '--onto', merge_base_sha, base_sha])
+                    merge_base_sha = subprocess.check_output(
+                        git_cmd('merge-base', base_sha, state.head_sha)).decode('ascii').strip()
+                    utils.logged_call(git_cmd('-c', 'user.name=' + git_cfg['name'],
+                                              '-c', 'user.email=' + git_cfg['email'],
+                                              'rebase', '-i', '--autosquash',
+                                              '--onto', merge_base_sha, base_sha))
                 except subprocess.CalledProcessError:
                     desc = 'Auto-squashing failed'
                     ok = False
 
             if ok:
-                utils.logged_call(['git', '-C', fpath, 'checkout', '-B', branch, base_sha])
+                utils.logged_call(git_cmd('checkout', '-B', branch, base_sha))
                 try:
-                    utils.logged_call(['git', '-C', fpath, '-c', 'user.name=' + git_cfg['name'], '-c', 'user.email=' + git_cfg['email'], 'merge', 'heads/homu-tmp', '-m', merge_msg])
+                    utils.logged_call(git_cmd('-c', 'user.name=' + git_cfg['name'],
+                                              '-c', 'user.email=' + git_cfg['email'],
+                                              'merge', 'heads/homu-tmp', '-m', merge_msg))
                 except subprocess.CalledProcessError:
                     pass
                 else:
-                    return git_push(fpath, branch, state)
+                    return git_push(git_cmd, branch, state)
     else:
         if repo_cfg.get('linear', False) or repo_cfg.get('autosquash', False):
             raise RuntimeError('local_git must be turned on to use this feature')
@@ -539,6 +559,161 @@ def create_merge(state, repo_cfg, branch, git_cfg):
     return ''
 
 
+def pull_is_rebased(state, repo_cfg, git_cfg, base_sha):
+    assert git_cfg['local_git']
+    git_cmd = init_local_git_cmds(repo_cfg, git_cfg)
+
+    utils.logged_call(git_cmd('fetch', 'origin', state.base_ref,
+                              'pull/{}/head'.format(state.num)))
+
+    return utils.silent_call(git_cmd('merge-base', '--is-ancestor',
+                                     base_sha, state.head_sha)) == 0
+
+
+# We could fetch this from GitHub instead, but that API is being deprecated:
+# https://developer.github.com/changes/2013-04-25-deprecating-merge-commit-sha/
+def get_github_merge_sha(state, repo_cfg, git_cfg):
+    assert git_cfg['local_git']
+    git_cmd = init_local_git_cmds(repo_cfg, git_cfg)
+
+    if state.mergeable is not True:
+        return None
+
+    utils.logged_call(git_cmd('fetch', 'origin',
+                              'pull/{}/merge'.format(state.num)))
+
+    return subprocess.check_output(git_cmd('rev-parse', 'FETCH_HEAD')).decode('ascii').strip()
+
+
+def do_exemption_merge(state, repo_cfg, git_cfg, url, reason):
+
+    try:
+        merge_sha = create_merge(state, repo_cfg, state.base_ref, git_cfg)
+    except subprocess.CalledProcessError:
+        print('* Unable to create a merge commit for the exempted PR: {}'.format(state))
+        traceback.print_exc()
+        return False
+
+    if not merge_sha:
+        return False
+
+    desc = 'Test exempted'
+
+    state.set_status('success')
+    utils.github_create_status(state.get_repo(), state.head_sha, 'success',
+                               url, desc, context='homu')
+    state.add_comment(':zap: {}: {}.'.format(desc, reason))
+
+    state.merge_sha = merge_sha
+    state.save()
+
+    state.fake_merge(repo_cfg)
+    return True
+
+
+def try_travis_exemption(state, repo_cfg, git_cfg):
+
+    travis_info = None
+    for info in utils.github_iter_statuses(state.get_repo(), state.head_sha):
+        if info.context == 'continuous-integration/travis-ci/pr':
+            travis_info = info
+            break
+
+    if travis_info is None or travis_info.state != 'success':
+        return False
+
+    mat = re.search('/builds/([0-9]+)$', travis_info.target_url)
+    if not mat:
+        return False
+
+    url = 'https://api.travis-ci.org/{}/{}/builds/{}'.format(state.owner,
+                                                             state.name,
+                                                             mat.group(1))
+    try:
+        res = requests.get(url)
+    except Exception as ex:
+        print('* Unable to gather build info from Travis CI: {}'.format(ex))
+        return False
+
+    travis_sha = json.loads(res.text)['commit']
+    travis_commit = state.get_repo().commit(travis_sha)
+
+    if not travis_commit:
+        return False
+
+    base_sha = state.get_repo().ref('heads/' + state.base_ref).object.sha
+
+    if (travis_commit.parents[0]['sha'] == base_sha and
+            travis_commit.parents[1]['sha'] == state.head_sha):
+        return do_exemption_merge(state, repo_cfg, git_cfg,
+                                  travis_info.target_url,
+                                  "merge already tested by Travis CI")
+
+    return False
+
+
+def try_status_exemption(state, repo_cfg, git_cfg):
+
+    # If all the builders are status-based, then we can do some checks to
+    # exempt testing under the following cases:
+    #   1. The PR head commit has the equivalent statuses set to 'success' and
+    #      it is fully rebased on the HEAD of the target base ref.
+    #   2. The PR head and merge commits have the equivalent statuses set to
+    #      state 'success' and the merge commit's first parent is the HEAD of the
+    #      target base ref.
+
+    if not git_cfg['local_git']:
+        raise RuntimeError('local_git is required to use status exemption')
+
+    statuses_all = set()
+
+    # equivalence dict: pr context --> auto context
+    status_equivalences = {}
+
+    for key, value in repo_cfg['status'].items():
+        context = value.get('context')
+        pr_context = value.get('pr_context', context)
+        if context is not None:
+            statuses_all.add(context)
+            status_equivalences[pr_context] = context
+
+    assert len(statuses_all) > 0
+
+    # let's first check that all the statuses we want are set to success
+    statuses_pass = set()
+    for info in utils.github_iter_statuses(state.get_repo(), state.head_sha):
+        if info.context in status_equivalences and info.state == 'success':
+            statuses_pass.add(status_equivalences[info.context])
+
+    if statuses_all != statuses_pass:
+        return False
+
+    # is the PR fully rebased?
+    base_sha = state.get_repo().ref('heads/' + state.base_ref).object.sha
+    if pull_is_rebased(state, repo_cfg, git_cfg, base_sha):
+        return do_exemption_merge(state, repo_cfg, git_cfg, '',
+                                  "pull fully rebased and already tested")
+
+    # check if we can use the github merge sha as proof
+    merge_sha = get_github_merge_sha(state, repo_cfg, git_cfg)
+    if merge_sha is None:
+        return False
+
+    statuses_merge_pass = set()
+    for info in utils.github_iter_statuses(state.get_repo(), merge_sha):
+        if info.context in status_equivalences and info.state == 'success':
+            statuses_merge_pass.add(status_equivalences[info.context])
+
+    merge_commit = state.get_repo().commit(merge_sha)
+    if (statuses_all == statuses_merge_pass and
+            merge_commit.parents[0]['sha'] == base_sha and
+            merge_commit.parents[1]['sha'] == state.head_sha):
+        return do_exemption_merge(state, repo_cfg, git_cfg, '',
+                                  "merge already tested")
+
+    return False
+
+
 def start_build(state, repo_cfgs, buildbot_slots, logger, db, git_cfg):
     if buildbot_slots[0]:
         return True
@@ -550,11 +725,15 @@ def start_build(state, repo_cfgs, buildbot_slots, logger, db, git_cfg):
     builders = []
     branch = 'try' if state.try_ else 'auto'
     branch = repo_cfg.get('branch', {}).get(branch, branch)
-    do_travis_exemption = False
+    can_try_travis_exemption = False
+
+    only_status_builders = True
     if 'buildbot' in repo_cfg:
         builders += repo_cfg['buildbot']['try_builders' if state.try_ else 'builders']
+        only_status_builders = False
     if 'travis' in repo_cfg:
         builders += ['travis']
+        only_status_builders = False
     if 'status' in repo_cfg:
         found_travis_context = False
         for key, value in repo_cfg['status'].items():
@@ -567,49 +746,19 @@ def start_build(state, repo_cfgs, buildbot_slots, logger, db, git_cfg):
                     found_travis_context = True
 
         if found_travis_context and len(builders) == 1:
-            do_travis_exemption = True
+            can_try_travis_exemption = True
 
     if len(builders) is 0:
         raise RuntimeError('Invalid configuration')
 
-    if (state.approved_by and do_travis_exemption):
-        for info in utils.github_iter_statuses(state.get_repo(), state.head_sha):
-            if info.context == 'continuous-integration/travis-ci/pr':
-                if info.state == 'success':
-                    mat = re.search('/builds/([0-9]+)$', info.target_url)
-                    if mat:
-                        url = 'https://api.travis-ci.org/{}/{}/builds/{}'.format(state.owner, state.name, mat.group(1))
-                        try:
-                            res = requests.get(url)
-                        except Exception as ex:
-                            logger.warn('Unable to gather build info from travis')
-                            utils.lazy_debug(logger, lambda: 'Travis build info error: {}'.format(ex))
-                            return False
-                        travis_sha = json.loads(res.text)['commit']
-                        travis_commit = state.get_repo().commit(travis_sha)
-                        if travis_commit:
-                            base_sha = state.get_repo().ref('heads/' + state.base_ref).object.sha
-                            if [travis_commit.parents[0]['sha'], travis_commit.parents[1]['sha']] == [base_sha, state.head_sha]:
-                                try:
-                                    merge_sha = create_merge(state, repo_cfg, state.base_ref, git_cfg)
-                                except subprocess.CalledProcessError:
-                                    print('* Unable to create a merge commit for the exempted PR: {}'.format(state))
-                                    traceback.print_exc()
-                                else:
-                                    if merge_sha:
-                                        desc = 'Test exempted'
-                                        url = info.target_url
+    if can_try_travis_exemption and state.approved_by:
+        if try_travis_exemption(state, repo_cfg, git_cfg):
+            return True
 
-                                        state.set_status('success')
-                                        utils.github_create_status(state.get_repo(), state.head_sha, 'success', url, desc, context='homu')
-                                        state.add_comment(':zap: {} - [{}]({})'.format(desc, 'status', url))
-
-                                        state.merge_sha = merge_sha
-                                        state.save()
-
-                                        state.fake_merge(repo_cfg)
-                                        return True
-                break
+    if (only_status_builders and state.approved_by and
+            repo_cfg.get('status_based_exemption', False)):
+        if try_status_exemption(state, repo_cfg, git_cfg):
+            return True
 
     merge_sha = create_merge(state, repo_cfg, branch, git_cfg)
     if not merge_sha:
