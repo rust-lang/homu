@@ -1078,7 +1078,8 @@ def main():
         'local_git': cfg_git.get('local_git', False),
     }
 
-    db_conn = sqlite3.connect('main.db', check_same_thread=False, isolation_level=None)
+    db_file = cfg.get('db', {}).get('file', 'main.db')
+    db_conn = sqlite3.connect(db_file, check_same_thread=False, isolation_level=None)
     db = db_conn.cursor()
 
     db_query(db, '''CREATE TABLE IF NOT EXISTS pull (
