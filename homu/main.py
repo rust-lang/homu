@@ -457,7 +457,13 @@ def init_local_git_cmds(repo_cfg, git_cfg):
     return lambda *args: ['git', '-C', fpath] + list(args)
 
 
-def create_merge(state, repo_cfg, branch, git_cfg):
+def branch_equal_to_merge(git_cmd, state, branch):
+    utils.logged_call(git_cmd('fetch', 'origin',
+                              'pull/{}/merge'.format(state.num)))
+    return utils.silent_call(git_cmd('diff', '--quiet', 'FETCH_HEAD', branch)) == 0
+
+
+def create_merge(state, repo_cfg, branch, git_cfg, ensure_merge_equal=False):
     base_sha = state.get_repo().ref('heads/' + state.base_ref).object.sha
 
     state.refresh()
@@ -504,6 +510,10 @@ def create_merge(state, repo_cfg, branch, git_cfg):
                                           '--env-filter', env_code,
                                           '{}..'.format(base_sha)))
 
+                if ensure_merge_equal:
+                    if not branch_equal_to_merge(git_cmd, state, branch):
+                        return ''
+
                 return git_push(git_cmd, branch, state)
         else:
             utils.logged_call(git_cmd('checkout', '-B', 'homu-tmp', state.head_sha))
@@ -530,10 +540,20 @@ def create_merge(state, repo_cfg, branch, git_cfg):
                 except subprocess.CalledProcessError:
                     pass
                 else:
+                    if ensure_merge_equal:
+                        if not branch_equal_to_merge(git_cmd, state, branch):
+                            return ''
+
                     return git_push(git_cmd, branch, state)
     else:
         if repo_cfg.get('linear', False) or repo_cfg.get('autosquash', False):
             raise RuntimeError('local_git must be turned on to use this feature')
+
+        # if we're merging using the GitHub API, we have no way to predict with
+        # certainty what the final result will be so make sure the caller isn't
+        # asking us to keep any promises (see also discussions at
+        # https://github.com/servo/homu/pull/57)
+        assert ensure_merge_equal is False
 
         if branch != state.base_ref:
             utils.github_set_ref(
@@ -585,10 +605,10 @@ def get_github_merge_sha(state, repo_cfg, git_cfg):
     return subprocess.check_output(git_cmd('rev-parse', 'FETCH_HEAD')).decode('ascii').strip()
 
 
-def do_exemption_merge(state, repo_cfg, git_cfg, url, reason):
+def do_exemption_merge(state, repo_cfg, git_cfg, url, check_merge, reason):
 
     try:
-        merge_sha = create_merge(state, repo_cfg, state.base_ref, git_cfg)
+        merge_sha = create_merge(state, repo_cfg, state.base_ref, git_cfg, check_merge)
     except subprocess.CalledProcessError:
         print('* Unable to create a merge commit for the exempted PR: {}'.format(state))
         traceback.print_exc()
@@ -645,8 +665,9 @@ def try_travis_exemption(state, repo_cfg, git_cfg):
 
     if (travis_commit.parents[0]['sha'] == base_sha and
             travis_commit.parents[1]['sha'] == state.head_sha):
+        # make sure we check against the github merge sha before pushing
         return do_exemption_merge(state, repo_cfg, git_cfg,
-                                  travis_info.target_url,
+                                  travis_info.target_url, True,
                                   "merge already tested by Travis CI")
 
     return False
@@ -691,7 +712,7 @@ def try_status_exemption(state, repo_cfg, git_cfg):
     # is the PR fully rebased?
     base_sha = state.get_repo().ref('heads/' + state.base_ref).object.sha
     if pull_is_rebased(state, repo_cfg, git_cfg, base_sha):
-        return do_exemption_merge(state, repo_cfg, git_cfg, '',
+        return do_exemption_merge(state, repo_cfg, git_cfg, '', False,
                                   "pull fully rebased and already tested")
 
     # check if we can use the github merge sha as proof
@@ -708,7 +729,8 @@ def try_status_exemption(state, repo_cfg, git_cfg):
     if (statuses_all == statuses_merge_pass and
             merge_commit.parents[0]['sha'] == base_sha and
             merge_commit.parents[1]['sha'] == state.head_sha):
-        return do_exemption_merge(state, repo_cfg, git_cfg, '',
+        # make sure we check against the github merge sha before pushing
+        return do_exemption_merge(state, repo_cfg, git_cfg, '', True,
                                   "merge already tested")
 
     return False
@@ -751,12 +773,11 @@ def start_build(state, repo_cfgs, buildbot_slots, logger, db, git_cfg):
     if len(builders) is 0:
         raise RuntimeError('Invalid configuration')
 
-    if can_try_travis_exemption and state.approved_by:
-        if try_travis_exemption(state, repo_cfg, git_cfg):
-            return True
-
     if (only_status_builders and state.approved_by and
             repo_cfg.get('status_based_exemption', False)):
+        if can_try_travis_exemption:
+            if try_travis_exemption(state, repo_cfg, git_cfg):
+                return True
         if try_status_exemption(state, repo_cfg, git_cfg):
             return True
 
