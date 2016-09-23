@@ -270,6 +270,14 @@ def parse_commands(body, username, repo_cfg, state, my_username, db, states, *, 
             if approver == 'me':
                 continue
 
+            # Ignore WIP PRs
+            if any(map(state.title.startswith, [
+                'WIP', 'TODO', '[WIP]', '[TODO]',
+            ])):
+                if realtime:
+                    state.add_comment(':clipboard: Looks like this PR is still in progress, ignoring approval')
+                continue
+
             # Sometimes, GitHub sends the head SHA of a PR as 0000000 through the webhook. This is
             # called a "null commit", and seems to happen when GitHub internally encounters a race
             # condition. Last time, it happened when squashing commits in a PR. In this case, we
