@@ -15,6 +15,7 @@ setup(
         'requests',
         'bottle',
         'waitress',
+        'retrying',
     ],
     package_data={
         'homu': [

@@ -14,6 +14,7 @@ from threading import Thread
 import sys
 import os
 import traceback
+from retrying import retry
 
 import bottle
 bottle.BaseRequest.MEMFILE_MAX = 1024 * 1024 * 10
@@ -689,22 +690,25 @@ def admin():
         return 'OK'
 
     elif request.json['cmd'] == 'sync_all':
-        def inner():
-            for repo_label in g.repos:
-                try:
-                    synchronize(repo_label, g.repo_cfgs[repo_label], g.logger, g.gh, g.states, g.repos, g.db, g.mergeable_que, g.my_username, g.repo_labels)
-                except:
-                    print('* Error while synchronizing {}'.format(repo_label))
-                    traceback.print_exc()
+        @retry(wait_exponential_multiplier=1000, wait_exponential_max=600000)
+        def sync_repo(repo_label, g):
+            try:
+                synchronize(repo_label, g.repo_cfgs[repo_label], g.logger, g.gh, g.states, g.repos, g.db, g.mergeable_que, g.my_username, g.repo_labels)
+            except:
+                print('* Error while synchronizing {}'.format(repo_label))
+                traceback.print_exc()
+                raise
 
+        def sync_all_repos():
+            for repo_label in g.repos:
+                sync_repo(repo_label, g)
             print('* Done synchronizing all')
 
-        Thread(target=inner).start()
+        Thread(target=sync_all_repos).start()
 
         return 'OK'
 
     return 'Unrecognized command'
-
 
 def start(cfg, states, queue_handler, repo_cfgs, repos, logger, buildbot_slots, my_username, db, repo_labels, mergeable_que, gh):
     env = jinja2.Environment(
