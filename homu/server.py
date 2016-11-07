@@ -735,7 +735,8 @@ def start(cfg, states, queue_handler, repo_cfgs, repos, logger, buildbot_slots, 
     g.gh = gh
 
     # Synchronize all PR data on startup
-    Thread(target=synch_all).start()
+    if cfg['web'].get('sync_on_start', False):
+        Thread(target=synch_all).start()
 
     try:
         run(host=cfg['web'].get('host', ''), port=cfg['web']['port'], server='waitress')
