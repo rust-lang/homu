@@ -45,6 +45,7 @@ def buildbot_sess(repo_cfg):
 
     sess.get(repo_cfg['buildbot']['url'] + '/logout', allow_redirects=False)
 
+
 db_query_lock = Lock()
 
 
@@ -1240,6 +1241,7 @@ def main():
     Thread(target=check_timeout, args=[states, queue_handler]).start()
 
     queue_handler()
+
 
 if __name__ == '__main__':
     main()

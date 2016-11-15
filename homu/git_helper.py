@@ -10,5 +10,6 @@ def main():
     args = ['ssh', '-i', SSH_KEY_FILE, '-S', 'none'] + sys.argv[1:]
     os.execvp('ssh', args)
 
+
 if __name__ == '__main__':
     main()

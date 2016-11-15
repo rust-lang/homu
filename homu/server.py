@@ -14,6 +14,7 @@ from threading import Thread
 import sys
 import os
 import traceback
+from retrying import retry
 
 import bottle
 bottle.BaseRequest.MEMFILE_MAX = 1024 * 1024 * 10
@@ -21,6 +22,8 @@ bottle.BaseRequest.MEMFILE_MAX = 1024 * 1024 * 10
 
 class G:
     pass
+
+
 g = G()
 
 
@@ -644,6 +647,21 @@ def synch(user_gh, state, repo_label, repo_cfg, repo):
     return 'Synchronizing {}...'.format(repo_label)
 
 
+def synch_all():
+    @retry(wait_exponential_multiplier=1000, wait_exponential_max=600000)
+    def sync_repo(repo_label, g):
+        try:
+            synchronize(repo_label, g.repo_cfgs[repo_label], g.logger, g.gh, g.states, g.repos, g.db, g.mergeable_que, g.my_username, g.repo_labels)
+        except:
+            print('* Error while synchronizing {}'.format(repo_label))
+            traceback.print_exc()
+            raise
+
+    for repo_label in g.repos:
+        sync_repo(repo_label, g)
+    print('* Done synchronizing all')
+
+
 @post('/admin')
 def admin():
     if request.json['secret'] != g.cfg['web']['secret']:
@@ -689,17 +707,7 @@ def admin():
         return 'OK'
 
     elif request.json['cmd'] == 'sync_all':
-        def inner():
-            for repo_label in g.repos:
-                try:
-                    synchronize(repo_label, g.repo_cfgs[repo_label], g.logger, g.gh, g.states, g.repos, g.db, g.mergeable_que, g.my_username, g.repo_labels)
-                except:
-                    print('* Error while synchronizing {}'.format(repo_label))
-                    traceback.print_exc()
-
-            print('* Done synchronizing all')
-
-        Thread(target=inner).start()
+        Thread(target=synch_all).start()
 
         return 'OK'
 
@@ -728,6 +736,10 @@ def start(cfg, states, queue_handler, repo_cfgs, repos, logger, buildbot_slots, 
     g.repo_labels = repo_labels
     g.mergeable_que = mergeable_que
     g.gh = gh
+
+    # Synchronize all PR data on startup
+    if cfg['web'].get('sync_on_start', False):
+        Thread(target=synch_all).start()
 
     try:
         run(host=cfg['web'].get('host', ''), port=cfg['web']['port'], server='waitress')
