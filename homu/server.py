@@ -22,6 +22,8 @@ bottle.BaseRequest.MEMFILE_MAX = 1024 * 1024 * 10
 
 class G:
     pass
+
+
 g = G()
 
 
@@ -710,6 +712,7 @@ def admin():
         return 'OK'
 
     return 'Unrecognized command'
+
 
 def start(cfg, states, queue_handler, repo_cfgs, repos, logger, buildbot_slots, my_username, db, repo_labels, mergeable_que, gh):
     env = jinja2.Environment(
