@@ -31,6 +31,9 @@ app_client_secret = ""
 # The port homu listens on
 port = 54856
 
+# Synchronize all open PRs on startup
+#sync_on_start = false
+
 # An example configuration for repository (there can be many of these)
 [repo.NAME]
 
