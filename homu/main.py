@@ -545,7 +545,8 @@ def create_merge(state, repo_cfg, branch, git_cfg, ensure_merge_equal=False):
                 try:
                     utils.logged_call(git_cmd('-c', 'user.name=' + git_cfg['name'],
                                               '-c', 'user.email=' + git_cfg['email'],
-                                              'merge', 'heads/homu-tmp', '-m', merge_msg))
+                                              'merge', 'heads/homu-tmp',
+                                              '--no-ff', '-m', merge_msg))
                 except subprocess.CalledProcessError:
                     pass
                 else:
