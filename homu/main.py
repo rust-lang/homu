@@ -1064,6 +1064,8 @@ def arguments():
                     'continuous integration service')
     parser.add_argument('-v', '--verbose',
                         action='store_true', help='Enable more verbose logging')
+    parser.add_argument('-c', '--config',
+                        action='store', help='Path to cfg.toml', default='cfg.toml')
 
     return parser.parse_args()
 
@@ -1076,11 +1078,15 @@ def main():
     logger.addHandler(logging.StreamHandler())
 
     try:
-        with open('cfg.toml') as fp:
+        with open(args.config) as fp:
             cfg = toml.loads(fp.read())
     except FileNotFoundError:
-        with open('cfg.json') as fp:
-            cfg = json.loads(fp.read())
+        # Fall back to cfg.json only if we're using the defaults
+        if args.config == 'cfg.toml':
+            with open('cfg.json') as fp:
+                cfg = json.loads(fp.read())
+        else:
+            raise
 
     gh = github3.login(token=cfg['github']['access_token'])
     user = gh.user()
