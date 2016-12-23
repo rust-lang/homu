@@ -14,6 +14,7 @@ from contextlib import contextmanager
 from itertools import chain
 from queue import Queue
 import os
+from enum import IntEnum
 import subprocess
 from .git_helper import SSH_KEY_FILE
 import shlex
@@ -238,15 +239,33 @@ def sha_or_blank(sha):
     return sha if re.match(r'^[0-9a-f]+$', sha) else ''
 
 
+class AuthState(IntEnum):
+    # Higher is more privileged
+    REVIEWER = 3
+    TRY = 2
+    NONE = 1
+
+
+def verify_auth(username, repo_cfg, state, auth):
+    is_reviewer = username in repo_cfg['reviewers']
+    if is_reviewer or username.lower() == state.delegate.lower():
+        have_auth = AuthState.REVIEWER
+    elif username in repo_cfg.get('try_users', []):
+        have_auth = AuthState.TRY
+    else:
+        have_auth = AuthState.NONE
+    return have_auth >= auth
+
+
 def parse_commands(body, username, repo_cfg, state, my_username, db, states, *, realtime=False, sha=''):
-    try_only = False
-    if username not in repo_cfg['reviewers'] and username != my_username:
-        if username.lower() == state.delegate.lower():
-            pass  # Allow users who have been delegated review powers
-        elif username in repo_cfg.get('try_users', []):
-            try_only = True
-        else:
-            return False
+    # Skip parsing notifications that we created
+    if username == my_username:
+        return False
+    # Let's see if we have try privileges or greater
+    if not verify_auth(username, repo_cfg, state, AuthState.TRY):
+        return False
+    # Are we a reviewer?
+    try_only = not verify_auth(username, repo_cfg, state, AuthState.REVIEWER)
 
     state_changed = False
 
