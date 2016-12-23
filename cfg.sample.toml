@@ -43,6 +43,9 @@ name = ""
 
 # who has r+ rights?
 reviewers = ["barosl", "graydon"]
+# Alternatively, set this to allow any github collaborator;
+# note that you can *also* specify reviewers above.
+# auth_collaborators = true
 
 # who has 'try' rights? (try, retry, force, clean, prioritization)
 try_users = []

@@ -14,6 +14,7 @@ from contextlib import contextmanager
 from itertools import chain
 from queue import Queue
 import os
+from enum import IntEnum
 import subprocess
 from .git_helper import SSH_KEY_FILE
 import shlex
@@ -238,15 +239,49 @@ def sha_or_blank(sha):
     return sha if re.match(r'^[0-9a-f]+$', sha) else ''
 
 
+class AuthState(IntEnum):
+    # Higher is more privileged
+    REVIEWER = 3
+    TRY = 2
+    NONE = 1
+
+
+def verify_auth(username, repo_cfg, state, auth, realtime):
+    is_reviewer = False
+    auth_collaborators = repo_cfg.get('auth_collaborators', False)
+    if auth_collaborators:
+        is_reviewer = state.get_repo().is_collaborator(username)
+    if not is_reviewer:
+        is_reviewer = username in repo_cfg.get('reviewers', [])
+    if not is_reviewer:
+        is_reviewer = username.lower() == state.delegate.lower()
+
+    if is_reviewer:
+        have_auth = AuthState.REVIEWER
+    elif username in repo_cfg.get('try_users', []):
+        have_auth = AuthState.TRY
+    else:
+        have_auth = AuthState.NONE
+    if have_auth >= auth:
+        return True
+    else:
+        if realtime:
+            reply = '@{}: :key: Insufficient privileges: '.format(username)
+            if auth == AuthState.REVIEWER:
+                if auth_collaborators:
+                    reply += 'Collaborator required'
+                else:
+                    reply += 'Not in reviewers'
+            elif auth == AuthState.TRY:
+                    reply += 'and not in try users'
+            state.add_comment(reply)
+        return False
+
+
 def parse_commands(body, username, repo_cfg, state, my_username, db, states, *, realtime=False, sha=''):
-    try_only = False
-    if username not in repo_cfg['reviewers'] and username != my_username:
-        if username.lower() == state.delegate.lower():
-            pass  # Allow users who have been delegated review powers
-        elif username in repo_cfg.get('try_users', []):
-            try_only = True
-        else:
-            return False
+    # Skip parsing notifications that we created
+    if username == my_username:
+        return False
 
     state_changed = False
 
@@ -255,9 +290,7 @@ def parse_commands(body, username, repo_cfg, state, my_username, db, states, *, 
         found = True
 
         if word == 'r+' or word.startswith('r='):
-            if try_only:
-                if realtime:
-                    state.add_comment(':key: Insufficient privileges')
+            if not verify_auth(username, repo_cfg, state, AuthState.REVIEWER, realtime):
                 continue
 
             if not sha and i + 1 < len(words):
@@ -329,9 +362,7 @@ def parse_commands(body, username, repo_cfg, state, my_username, db, states, *, 
                     state.add_comment(':pushpin: Commit {:.7} has been approved by `{}`\n\n<!-- @{} r={} {} -->'.format(state.head_sha, approver, my_username, approver, state.head_sha))
 
         elif word == 'r-':
-            if try_only:
-                if realtime:
-                    state.add_comment(':key: Insufficient privileges')
+            if not verify_auth(username, repo_cfg, state, AuthState.REVIEWER, realtime):
                 continue
 
             state.approved_by = ''
@@ -339,6 +370,8 @@ def parse_commands(body, username, repo_cfg, state, my_username, db, states, *, 
             state.save()
 
         elif word.startswith('p='):
+            if not verify_auth(username, repo_cfg, state, AuthState.TRY, realtime):
+                continue
             try:
                 state.priority = int(word[len('p='):])
             except ValueError:
@@ -347,9 +380,7 @@ def parse_commands(body, username, repo_cfg, state, my_username, db, states, *, 
             state.save()
 
         elif word.startswith('delegate='):
-            if try_only:
-                if realtime:
-                    state.add_comment(':key: Insufficient privileges')
+            if not verify_auth(username, repo_cfg, state, AuthState.REVIEWER, realtime):
                 continue
 
             state.delegate = word[len('delegate='):]
@@ -359,13 +390,14 @@ def parse_commands(body, username, repo_cfg, state, my_username, db, states, *, 
                 state.add_comment(':v: @{} can now approve this pull request'.format(state.delegate))
 
         elif word == 'delegate-':
+            # TODO: why is this a TRY?
+            if not verify_auth(username, repo_cfg, state, AuthState.TRY, realtime):
+                continue
             state.delegate = ''
             state.save()
 
         elif word == 'delegate+':
-            if try_only:
-                if realtime:
-                    state.add_comment(':key: Insufficient privileges')
+            if not verify_auth(username, repo_cfg, state, AuthState.REVIEWER, realtime):
                 continue
 
             state.delegate = state.get_repo().pull_request(state.num).user.login
@@ -375,9 +407,13 @@ def parse_commands(body, username, repo_cfg, state, my_username, db, states, *, 
                 state.add_comment(':v: @{} can now approve this pull request'.format(state.delegate))
 
         elif word == 'retry' and realtime:
+            if not verify_auth(username, repo_cfg, state, AuthState.TRY, realtime):
+                continue
             state.set_status('')
 
         elif word in ['try', 'try-'] and realtime:
+            if not verify_auth(username, repo_cfg, state, AuthState.TRY, realtime):
+                continue
             state.try_ = word == 'try'
 
             state.merge_sha = ''
@@ -386,11 +422,15 @@ def parse_commands(body, username, repo_cfg, state, my_username, db, states, *, 
             state.save()
 
         elif word in ['rollup', 'rollup-']:
+            if not verify_auth(username, repo_cfg, state, AuthState.TRY, realtime):
+                continue
             state.rollup = word == 'rollup'
 
             state.save()
 
         elif word == 'force' and realtime:
+            if not verify_auth(username, repo_cfg, state, AuthState.TRY, realtime):
+                continue
             if 'buildbot' in repo_cfg:
                 with buildbot_sess(repo_cfg) as sess:
                     res = sess.post(repo_cfg['buildbot']['url'] + '/builders/_selected/stopselected', allow_redirects=False, data={
@@ -413,6 +453,8 @@ def parse_commands(body, username, repo_cfg, state, my_username, db, states, *, 
                 state.add_comment(':bomb: Buildbot returned an error: `{}`'.format(err))
 
         elif word == 'clean' and realtime:
+            if not verify_auth(username, repo_cfg, state, AuthState.TRY, realtime):
+                continue
             state.merge_sha = ''
             state.init_build_res([])
 
