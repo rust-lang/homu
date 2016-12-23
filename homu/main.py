@@ -247,8 +247,16 @@ class AuthState(IntEnum):
 
 
 def verify_auth(username, repo_cfg, state, auth, realtime):
-    is_reviewer = username in repo_cfg['reviewers']
-    if is_reviewer or username.lower() == state.delegate.lower():
+    is_reviewer = False
+    auth_collaborators = repo_cfg.get('auth_collaborators', False)
+    if auth_collaborators:
+        is_reviewer = state.get_repo().is_collaborator(username)
+    if not is_reviewer:
+        is_reviewer = username in repo_cfg.get('reviewers', [])
+    if not is_reviewer:
+        is_reviewer = username.lower() == state.delegate.lower()
+
+    if is_reviewer:
         have_auth = AuthState.REVIEWER
     elif username in repo_cfg.get('try_users', []):
         have_auth = AuthState.TRY
@@ -258,7 +266,15 @@ def verify_auth(username, repo_cfg, state, auth, realtime):
         return True
     else:
         if realtime:
-            state.add_comment(':key: Insufficient privileges')
+            reply = '@{}: :key: Insufficient privileges: '.format(username)
+            if auth == AuthState.REVIEWER:
+                if auth_collaborators:
+                    reply += 'Collaborator required'
+                else:
+                    reply += 'Not in reviewers'
+            elif auth == AuthState.TRY:
+                    reply += 'and not in try users'
+            state.add_comment(reply)
         return False
 
 
