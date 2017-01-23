@@ -459,7 +459,8 @@ def parse_commands(body, username, repo_cfg, state, my_username, db, states, *, 
             state.init_build_res([])
 
             state.save()
-
+        elif word == 'hello?' or word == 'ping':
+            state.add_comment(":sleepy: I'm awake I'm awake")
         else:
             found = False
 
