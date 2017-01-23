@@ -18,6 +18,7 @@ from enum import IntEnum
 import subprocess
 from .git_helper import SSH_KEY_FILE
 import shlex
+import random
 
 STATUS_TO_PRIORITY = {
     'success': 0,
@@ -278,6 +279,10 @@ def verify_auth(username, repo_cfg, state, auth, realtime):
         return False
 
 
+PORTAL_TURRET_DIALOG = ["Target acquired", "Activated", "Who's there?", "There you are"]
+PORTAL_TURRET_IMAGE = "https://cloud.githubusercontent.com/assets/1617736/22222924/c07b2a1c-e16d-11e6-91b3-ac659550585c.png"
+
+
 def parse_commands(body, username, repo_cfg, state, my_username, db, states, *, realtime=False, sha=''):
     # Skip parsing notifications that we created
     if username == my_username:
@@ -286,6 +291,8 @@ def parse_commands(body, username, repo_cfg, state, my_username, db, states, *, 
     state_changed = False
 
     words = list(chain.from_iterable(re.findall(r'\S+', x) for x in body.splitlines() if '@' + my_username in x))
+    if words[1:] == ["are", "you", "still", "there?"]:
+        state.add_comment(":cake: {}\n\n![]({})".format(random.choice(PORTAL_TURRET_DIALOG), PORTAL_TURRET_IMAGE))
     for i, word in reversed(list(enumerate(words))):
         found = True
 
