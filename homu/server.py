@@ -48,7 +48,7 @@ def get_repo(repo_label, repo_cfg):
 
 @get('/')
 def index():
-    return g.tpls['index'].render(repos=sorted(g.repos))
+    return g.tpls['index'].render(repos=[g.repos[label] for label in sorted(g.repos)])
 
 
 @get('/queue/<repo_label:path>')
@@ -57,6 +57,7 @@ def queue(repo_label):
 
     lazy_debug(logger, lambda: 'repo_label: {}'.format(repo_label))
 
+    single_repo_closed = None
     if repo_label == 'all':
         labels = g.repos.keys()
         multiple = True
@@ -64,6 +65,8 @@ def queue(repo_label):
     else:
         labels = repo_label.split('+')
         multiple = len(labels) > 1
+        if repo_label in g.repos and g.repos[repo_label].treeclosed >= 0:
+            single_repo_closed = g.repos[repo_label].treeclosed
         repo_url = 'https://github.com/{}/{}'.format(
             g.cfg['repo'][repo_label]['owner'],
             g.cfg['repo'][repo_label]['name'])
@@ -76,12 +79,20 @@ def queue(repo_label):
             abort(404, 'No such repository: {}'.format(label))
 
     pull_states = sorted(states)
-
     rows = []
     for state in pull_states:
+        treeclosed = single_repo_closed or state.priority < g.repos[state.repo_label].treeclosed
+        status_ext = ''
+
+        if state.try_:
+            status_ext += ' (try)'
+
+        if treeclosed:
+            status_ext += ' [TREE CLOSED]'
+ 
         rows.append({
             'status': state.get_status(),
-            'status_ext': ' (try)' if state.try_ else '',
+            'status_ext': status_ext,
             'priority': 'rollup' if state.rollup else state.priority,
             'url': 'https://github.com/{}/{}/pull/{}'.format(state.owner, state.name, state.num),
             'num': state.num,
@@ -92,11 +103,13 @@ def queue(repo_label):
             'assignee': state.assignee,
             'repo_label': state.repo_label,
             'repo_url': 'https://github.com/{}/{}'.format(state.owner, state.name),
+            'greyed': "treeclosed" if treeclosed else "",
         })
 
     return g.tpls['queue'].render(
         repo_url=repo_url,
         repo_label=repo_label,
+        treeclosed=single_repo_closed,
         states=rows,
         oauth_client_id=g.cfg['github']['app_client_id'],
         total=len(pull_states),

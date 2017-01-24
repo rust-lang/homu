@@ -77,6 +77,9 @@ class Repository:
         if value > 0:
             db_query(self.db, 'INSERT INTO repos (repo, treeclosed) VALUES (?, ?)', [self.repo_label, value])
 
+    def __lt__(self, other):
+        return self.gh < other.gh
+
 class PullReqState:
     num = 0
     priority = 0
@@ -982,6 +985,8 @@ def process_queue(states, repos, repo_cfgs, logger, buildbot_slots, db, git_cfg)
         repo_states = sorted(states[repo_label].values())
 
         for state in repo_states:
+            if state.priority < repo.treeclosed:
+                break
             if state.status == 'pending' and not state.try_:
                 break
 
