@@ -274,7 +274,15 @@ class AuthState(IntEnum):
     NONE = 1
 
 
-def verify_auth(username, repo_cfg, state, auth, realtime):
+def verify_auth(username, repo_cfg, state, auth, realtime, my_username):
+    # In some cases (e.g. non-fully-qualified r+) we recursively talk to ourself
+    # via a hidden markdown comment in the message. This is so that
+    # when re-synchronizing after shutdown we can parse these comments
+    # and still know the SHA for the approval.
+    #
+    # So comments from self should always be allowed
+    if username == my_username:
+        return True
     is_reviewer = False
     auth_collaborators = repo_cfg.get('auth_collaborators', False)
     if auth_collaborators:
@@ -311,9 +319,6 @@ PORTAL_TURRET_IMAGE = "https://cloud.githubusercontent.com/assets/1617736/222229
 
 
 def parse_commands(body, username, repo_cfg, state, my_username, db, states, *, realtime=False, sha=''):
-    # Skip parsing notifications that we created
-    if username == my_username:
-        return False
 
     state_changed = False
 
@@ -323,7 +328,7 @@ def parse_commands(body, username, repo_cfg, state, my_username, db, states, *, 
     for i, word in reversed(list(enumerate(words))):
         found = True
         if word == 'r+' or word.startswith('r='):
-            if not verify_auth(username, repo_cfg, state, AuthState.REVIEWER, realtime):
+            if not verify_auth(username, repo_cfg, state, AuthState.REVIEWER, realtime, my_username):
                 continue
 
             if not sha and i + 1 < len(words):
@@ -395,7 +400,7 @@ def parse_commands(body, username, repo_cfg, state, my_username, db, states, *, 
                     state.add_comment(':pushpin: Commit {:.7} has been approved by `{}`\n\n<!-- @{} r={} {} -->'.format(state.head_sha, approver, my_username, approver, state.head_sha))
 
         elif word == 'r-':
-            if not verify_auth(username, repo_cfg, state, AuthState.REVIEWER, realtime):
+            if not verify_auth(username, repo_cfg, state, AuthState.REVIEWER, realtime, my_username):
                 continue
 
             state.approved_by = ''
@@ -403,7 +408,7 @@ def parse_commands(body, username, repo_cfg, state, my_username, db, states, *, 
             state.save()
 
         elif word.startswith('p='):
-            if not verify_auth(username, repo_cfg, state, AuthState.TRY, realtime):
+            if not verify_auth(username, repo_cfg, state, AuthState.TRY, realtime, my_username):
                 continue
             try:
                 state.priority = int(word[len('p='):])
@@ -413,7 +418,7 @@ def parse_commands(body, username, repo_cfg, state, my_username, db, states, *, 
             state.save()
 
         elif word.startswith('delegate='):
-            if not verify_auth(username, repo_cfg, state, AuthState.REVIEWER, realtime):
+            if not verify_auth(username, repo_cfg, state, AuthState.REVIEWER, realtime, my_username):
                 continue
 
             state.delegate = word[len('delegate='):]
@@ -424,13 +429,13 @@ def parse_commands(body, username, repo_cfg, state, my_username, db, states, *, 
 
         elif word == 'delegate-':
             # TODO: why is this a TRY?
-            if not verify_auth(username, repo_cfg, state, AuthState.TRY, realtime):
+            if not verify_auth(username, repo_cfg, state, AuthState.TRY, realtime, my_username):
                 continue
             state.delegate = ''
             state.save()
 
         elif word == 'delegate+':
-            if not verify_auth(username, repo_cfg, state, AuthState.REVIEWER, realtime):
+            if not verify_auth(username, repo_cfg, state, AuthState.REVIEWER, realtime, my_username):
                 continue
 
             state.delegate = state.get_repo().pull_request(state.num).user.login
@@ -440,12 +445,12 @@ def parse_commands(body, username, repo_cfg, state, my_username, db, states, *, 
                 state.add_comment(':v: @{} can now approve this pull request'.format(state.delegate))
 
         elif word == 'retry' and realtime:
-            if not verify_auth(username, repo_cfg, state, AuthState.TRY, realtime):
+            if not verify_auth(username, repo_cfg, state, AuthState.TRY, realtime, my_username):
                 continue
             state.set_status('')
 
         elif word in ['try', 'try-'] and realtime:
-            if not verify_auth(username, repo_cfg, state, AuthState.TRY, realtime):
+            if not verify_auth(username, repo_cfg, state, AuthState.TRY, realtime, my_username):
                 continue
             state.try_ = word == 'try'
 
@@ -455,14 +460,14 @@ def parse_commands(body, username, repo_cfg, state, my_username, db, states, *, 
             state.save()
 
         elif word in ['rollup', 'rollup-']:
-            if not verify_auth(username, repo_cfg, state, AuthState.TRY, realtime):
+            if not verify_auth(username, repo_cfg, state, AuthState.TRY, realtime, my_username):
                 continue
             state.rollup = word == 'rollup'
 
             state.save()
 
         elif word == 'force' and realtime:
-            if not verify_auth(username, repo_cfg, state, AuthState.TRY, realtime):
+            if not verify_auth(username, repo_cfg, state, AuthState.TRY, realtime, my_username):
                 continue
             if 'buildbot' in repo_cfg:
                 with buildbot_sess(repo_cfg) as sess:
@@ -486,7 +491,7 @@ def parse_commands(body, username, repo_cfg, state, my_username, db, states, *, 
                 state.add_comment(':bomb: Buildbot returned an error: `{}`'.format(err))
 
         elif word == 'clean' and realtime:
-            if not verify_auth(username, repo_cfg, state, AuthState.TRY, realtime):
+            if not verify_auth(username, repo_cfg, state, AuthState.TRY, realtime, my_username):
                 continue
             state.merge_sha = ''
             state.init_build_res([])
@@ -495,7 +500,7 @@ def parse_commands(body, username, repo_cfg, state, my_username, db, states, *, 
         elif word == 'hello?' or word == 'ping':
             state.add_comment(":sleepy: I'm awake I'm awake")
         elif word.startswith('treeclosed='):
-            if not verify_auth(username, repo_cfg, state, AuthState.REVIEWER, realtime):
+            if not verify_auth(username, repo_cfg, state, AuthState.REVIEWER, realtime, my_username):
                 continue
             try:
                 treeclosed = int(word[len('treeclosed='):])
@@ -504,7 +509,7 @@ def parse_commands(body, username, repo_cfg, state, my_username, db, states, *, 
                 pass
             state.save()
         elif word == 'treeclosed-':
-            if not verify_auth(username, repo_cfg, state, AuthState.REVIEWER, realtime):
+            if not verify_auth(username, repo_cfg, state, AuthState.REVIEWER, realtime, my_username):
                 continue
             state.change_treeclosed(-1)
             state.save()
