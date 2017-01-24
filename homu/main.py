@@ -258,6 +258,10 @@ class PullReqState:
     def change_treeclosed(self, value):
         self.repos[self.repo_label].update_treeclosed(value)
 
+    def blocked_by_closed_tree(self):
+        treeclosed = self.repos[self.repo_label].treeclosed
+        return treeclosed if self.priority < treeclosed else None
+
 
 def sha_cmp(short, full):
     return len(short) >= 4 and short == full[:len(short)]
@@ -398,6 +402,9 @@ def parse_commands(body, username, repo_cfg, state, my_username, db, states, *, 
                     state.add_comment(':scream_cat: {} Please try again with `{:.7}`.'.format(msg, state.head_sha))
                 else:
                     state.add_comment(':pushpin: Commit {:.7} has been approved by `{}`\n\n<!-- @{} r={} {} -->'.format(state.head_sha, approver, my_username, approver, state.head_sha))
+                    treeclosed = state.blocked_by_closed_tree()
+                    if treeclosed:
+                        state.add_comment(':evergreen_tree: The tree is currently closed for pull requests below priority {}, this pull request will be tested once the tree is reopened'.format(treeclosed))
 
         elif word == 'r-':
             if not verify_auth(username, repo_cfg, state, AuthState.REVIEWER, realtime, my_username):
