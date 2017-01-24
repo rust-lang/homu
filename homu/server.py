@@ -37,7 +37,7 @@ def find_state(sha):
 
 
 def get_repo(repo_label, repo_cfg):
-    repo = g.repos[repo_label]
+    repo = g.repos[repo_label].gh
     if not repo:
         g.repos[repo_label] = repo = g.gh.repository(repo_cfg['owner'], repo_cfg['name'])
 

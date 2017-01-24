@@ -55,6 +55,27 @@ def db_query(db, *args):
     with db_query_lock:
         db.execute(*args)
 
+class Repository:
+    treeclosed = -1
+    gh = None
+    label = None
+    db = None
+    def __init__(self, gh, repo_label, db):
+        self.gh = gh
+        self.repo_label = repo_label
+        self.db = db
+        db_query(db, 'SELECT treeclosed FROM repos WHERE repo = ?', [repo_label])
+        row = db.fetchone()
+        if row:
+            self.treeclosed = row[0]
+        else:
+            self.treeclosed = -1
+
+    def update_treeclosed(self, value):
+        self.treeclosed = value
+        db_query(self.db, 'DELETE FROM repos where repo = ?', [self.repo_label])
+        if value > 0:
+            db_query(self.db, 'INSERT INTO repos (repo, treeclosed) VALUES (?, ?)', [self.repo_label, value])
 
 class PullReqState:
     num = 0
@@ -185,9 +206,9 @@ class PullReqState:
                          for builder, data in self.build_res.items())
 
     def get_repo(self):
-        repo = self.repos[self.repo_label]
+        repo = self.repos[self.repo_label].gh
         if not repo:
-            self.repos[self.repo_label] = repo = self.gh.repository(self.owner, self.name)
+            self.repos[self.repo_label].gh = repo = self.gh.repository(self.owner, self.name)
 
             assert repo.owner.login == self.owner
             assert repo.name == self.name
@@ -230,6 +251,9 @@ class PullReqState:
         if not title.startswith(merged_prefix):
             title = merged_prefix + title
             issue.edit(title=title)
+
+    def change_treeclosed(self, value):
+        self.repos[self.repo_label].update_treeclosed(value)
 
 
 def sha_cmp(short, full):
@@ -295,7 +319,6 @@ def parse_commands(body, username, repo_cfg, state, my_username, db, states, *, 
         state.add_comment(":cake: {}\n\n![]({})".format(random.choice(PORTAL_TURRET_DIALOG), PORTAL_TURRET_IMAGE))
     for i, word in reversed(list(enumerate(words))):
         found = True
-
         if word == 'r+' or word.startswith('r='):
             if not verify_auth(username, repo_cfg, state, AuthState.REVIEWER, realtime):
                 continue
@@ -468,6 +491,20 @@ def parse_commands(body, username, repo_cfg, state, my_username, db, states, *, 
             state.save()
         elif word == 'hello?' or word == 'ping':
             state.add_comment(":sleepy: I'm awake I'm awake")
+        elif word.startswith('treeclosed='):
+            if not verify_auth(username, repo_cfg, state, AuthState.REVIEWER, realtime):
+                continue
+            try:
+                treeclosed = int(word[len('treeclosed='):])
+                state.change_treeclosed(treeclosed)
+            except ValueError:
+                pass
+            state.save()
+        elif word == 'treeclosed-':
+            if not verify_auth(username, repo_cfg, state, AuthState.REVIEWER, realtime):
+                continue
+            state.change_treeclosed(-1)
+            state.save()
         else:
             found = False
 
@@ -1034,7 +1071,6 @@ def check_timeout(states, queue_handler):
         finally:
             time.sleep(3600)
 
-
 def synchronize(repo_label, repo_cfg, logger, gh, states, repos, db, mergeable_que, my_username, repo_labels):
     logger.info('Synchronizing {}...'.format(repo_label))
 
@@ -1052,7 +1088,7 @@ def synchronize(repo_label, repo_cfg, logger, gh, states, repos, db, mergeable_q
         }
 
     states[repo_label] = {}
-    repos[repo_label] = repo
+    repos[repo_label] = Repository(repo, repo_label, db)
 
     for pull in repo.iter_pulls(state='open'):
         db_query(db, 'SELECT status FROM pull WHERE repo = ? AND num = ?', [repo_label, pull.number])
@@ -1204,13 +1240,18 @@ def main():
         mergeable INTEGER NOT NULL,
         UNIQUE (repo, num)
     )''')
-
+    db_query(db, '''CREATE TABLE IF NOT EXISTS repos (
+        repo TEXT NOT NULL,
+        treeclosed INTEGER NOT NULL,
+        UNIQUE (repo)
+    )''')
     for repo_label, repo_cfg in cfg['repo'].items():
         repo_cfgs[repo_label] = repo_cfg
         repo_labels[repo_cfg['owner'], repo_cfg['name']] = repo_label
 
         repo_states = {}
-        repos[repo_label] = None
+        repos[repo_label] = Repository(None, repo_label, db)
+
 
         db_query(db, 'SELECT num, head_sha, status, title, body, head_ref, base_ref, assignee, approved_by, priority, try_, rollup, delegate, merge_sha FROM pull WHERE repo = ?', [repo_label])
         for num, head_sha, status, title, body, head_ref, base_ref, assignee, approved_by, priority, try_, rollup, delegate, merge_sha in db.fetchall():
