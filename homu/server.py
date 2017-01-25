@@ -89,7 +89,7 @@ def queue(repo_label):
 
         if treeclosed:
             status_ext += ' [TREE CLOSED]'
- 
+
         rows.append({
             'status': state.get_status(),
             'status_ext': status_ext,

@@ -55,11 +55,13 @@ def db_query(db, *args):
     with db_query_lock:
         db.execute(*args)
 
+
 class Repository:
     treeclosed = -1
     gh = None
     label = None
     db = None
+
     def __init__(self, gh, repo_label, db):
         self.gh = gh
         self.repo_label = repo_label
@@ -79,6 +81,7 @@ class Repository:
 
     def __lt__(self, other):
         return self.gh < other.gh
+
 
 class PullReqState:
     num = 0
@@ -1088,6 +1091,7 @@ def check_timeout(states, queue_handler):
         finally:
             time.sleep(3600)
 
+
 def synchronize(repo_label, repo_cfg, logger, gh, states, repos, db, mergeable_que, my_username, repo_labels):
     logger.info('Synchronizing {}...'.format(repo_label))
 
@@ -1268,7 +1272,6 @@ def main():
 
         repo_states = {}
         repos[repo_label] = Repository(None, repo_label, db)
-
 
         db_query(db, 'SELECT num, head_sha, status, title, body, head_ref, base_ref, assignee, approved_by, priority, try_, rollup, delegate, merge_sha FROM pull WHERE repo = ?', [repo_label])
         for num, head_sha, status, title, body, head_ref, base_ref, assignee, approved_by, priority, try_, rollup, delegate, merge_sha in db.fetchall():
