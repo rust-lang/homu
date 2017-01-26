@@ -56,6 +56,33 @@ def db_query(db, *args):
         db.execute(*args)
 
 
+class Repository:
+    treeclosed = -1
+    gh = None
+    label = None
+    db = None
+
+    def __init__(self, gh, repo_label, db):
+        self.gh = gh
+        self.repo_label = repo_label
+        self.db = db
+        db_query(db, 'SELECT treeclosed FROM repos WHERE repo = ?', [repo_label])
+        row = db.fetchone()
+        if row:
+            self.treeclosed = row[0]
+        else:
+            self.treeclosed = -1
+
+    def update_treeclosed(self, value):
+        self.treeclosed = value
+        db_query(self.db, 'DELETE FROM repos where repo = ?', [self.repo_label])
+        if value > 0:
+            db_query(self.db, 'INSERT INTO repos (repo, treeclosed) VALUES (?, ?)', [self.repo_label, value])
+
+    def __lt__(self, other):
+        return self.gh < other.gh
+
+
 class PullReqState:
     num = 0
     priority = 0
@@ -185,9 +212,9 @@ class PullReqState:
                          for builder, data in self.build_res.items())
 
     def get_repo(self):
-        repo = self.repos[self.repo_label]
+        repo = self.repos[self.repo_label].gh
         if not repo:
-            self.repos[self.repo_label] = repo = self.gh.repository(self.owner, self.name)
+            self.repos[self.repo_label].gh = repo = self.gh.repository(self.owner, self.name)
 
             assert repo.owner.login == self.owner
             assert repo.name == self.name
@@ -231,6 +258,13 @@ class PullReqState:
             title = merged_prefix + title
             issue.edit(title=title)
 
+    def change_treeclosed(self, value):
+        self.repos[self.repo_label].update_treeclosed(value)
+
+    def blocked_by_closed_tree(self):
+        treeclosed = self.repos[self.repo_label].treeclosed
+        return treeclosed if self.priority < treeclosed else None
+
 
 def sha_cmp(short, full):
     return len(short) >= 4 and short == full[:len(short)]
@@ -247,7 +281,15 @@ class AuthState(IntEnum):
     NONE = 1
 
 
-def verify_auth(username, repo_cfg, state, auth, realtime):
+def verify_auth(username, repo_cfg, state, auth, realtime, my_username):
+    # In some cases (e.g. non-fully-qualified r+) we recursively talk to ourself
+    # via a hidden markdown comment in the message. This is so that
+    # when re-synchronizing after shutdown we can parse these comments
+    # and still know the SHA for the approval.
+    #
+    # So comments from self should always be allowed
+    if username == my_username:
+        return True
     is_reviewer = False
     auth_collaborators = repo_cfg.get('auth_collaborators', False)
     if auth_collaborators:
@@ -284,9 +326,6 @@ PORTAL_TURRET_IMAGE = "https://cloud.githubusercontent.com/assets/1617736/222229
 
 
 def parse_commands(body, username, repo_cfg, state, my_username, db, states, *, realtime=False, sha=''):
-    # Skip parsing notifications that we created
-    if username == my_username:
-        return False
 
     state_changed = False
 
@@ -295,9 +334,8 @@ def parse_commands(body, username, repo_cfg, state, my_username, db, states, *, 
         state.add_comment(":cake: {}\n\n![]({})".format(random.choice(PORTAL_TURRET_DIALOG), PORTAL_TURRET_IMAGE))
     for i, word in reversed(list(enumerate(words))):
         found = True
-
         if word == 'r+' or word.startswith('r='):
-            if not verify_auth(username, repo_cfg, state, AuthState.REVIEWER, realtime):
+            if not verify_auth(username, repo_cfg, state, AuthState.REVIEWER, realtime, my_username):
                 continue
 
             if not sha and i + 1 < len(words):
@@ -367,9 +405,12 @@ def parse_commands(body, username, repo_cfg, state, my_username, db, states, *, 
                     state.add_comment(':scream_cat: {} Please try again with `{:.7}`.'.format(msg, state.head_sha))
                 else:
                     state.add_comment(':pushpin: Commit {:.7} has been approved by `{}`\n\n<!-- @{} r={} {} -->'.format(state.head_sha, approver, my_username, approver, state.head_sha))
+                    treeclosed = state.blocked_by_closed_tree()
+                    if treeclosed:
+                        state.add_comment(':evergreen_tree: The tree is currently closed for pull requests below priority {}, this pull request will be tested once the tree is reopened'.format(treeclosed))
 
         elif word == 'r-':
-            if not verify_auth(username, repo_cfg, state, AuthState.REVIEWER, realtime):
+            if not verify_auth(username, repo_cfg, state, AuthState.REVIEWER, realtime, my_username):
                 continue
 
             state.approved_by = ''
@@ -377,7 +418,7 @@ def parse_commands(body, username, repo_cfg, state, my_username, db, states, *, 
             state.save()
 
         elif word.startswith('p='):
-            if not verify_auth(username, repo_cfg, state, AuthState.TRY, realtime):
+            if not verify_auth(username, repo_cfg, state, AuthState.TRY, realtime, my_username):
                 continue
             try:
                 state.priority = int(word[len('p='):])
@@ -387,7 +428,7 @@ def parse_commands(body, username, repo_cfg, state, my_username, db, states, *, 
             state.save()
 
         elif word.startswith('delegate='):
-            if not verify_auth(username, repo_cfg, state, AuthState.REVIEWER, realtime):
+            if not verify_auth(username, repo_cfg, state, AuthState.REVIEWER, realtime, my_username):
                 continue
 
             state.delegate = word[len('delegate='):]
@@ -398,13 +439,13 @@ def parse_commands(body, username, repo_cfg, state, my_username, db, states, *, 
 
         elif word == 'delegate-':
             # TODO: why is this a TRY?
-            if not verify_auth(username, repo_cfg, state, AuthState.TRY, realtime):
+            if not verify_auth(username, repo_cfg, state, AuthState.TRY, realtime, my_username):
                 continue
             state.delegate = ''
             state.save()
 
         elif word == 'delegate+':
-            if not verify_auth(username, repo_cfg, state, AuthState.REVIEWER, realtime):
+            if not verify_auth(username, repo_cfg, state, AuthState.REVIEWER, realtime, my_username):
                 continue
 
             state.delegate = state.get_repo().pull_request(state.num).user.login
@@ -414,12 +455,12 @@ def parse_commands(body, username, repo_cfg, state, my_username, db, states, *, 
                 state.add_comment(':v: @{} can now approve this pull request'.format(state.delegate))
 
         elif word == 'retry' and realtime:
-            if not verify_auth(username, repo_cfg, state, AuthState.TRY, realtime):
+            if not verify_auth(username, repo_cfg, state, AuthState.TRY, realtime, my_username):
                 continue
             state.set_status('')
 
         elif word in ['try', 'try-'] and realtime:
-            if not verify_auth(username, repo_cfg, state, AuthState.TRY, realtime):
+            if not verify_auth(username, repo_cfg, state, AuthState.TRY, realtime, my_username):
                 continue
             state.try_ = word == 'try'
 
@@ -429,14 +470,14 @@ def parse_commands(body, username, repo_cfg, state, my_username, db, states, *, 
             state.save()
 
         elif word in ['rollup', 'rollup-']:
-            if not verify_auth(username, repo_cfg, state, AuthState.TRY, realtime):
+            if not verify_auth(username, repo_cfg, state, AuthState.TRY, realtime, my_username):
                 continue
             state.rollup = word == 'rollup'
 
             state.save()
 
         elif word == 'force' and realtime:
-            if not verify_auth(username, repo_cfg, state, AuthState.TRY, realtime):
+            if not verify_auth(username, repo_cfg, state, AuthState.TRY, realtime, my_username):
                 continue
             if 'buildbot' in repo_cfg:
                 with buildbot_sess(repo_cfg) as sess:
@@ -460,7 +501,7 @@ def parse_commands(body, username, repo_cfg, state, my_username, db, states, *, 
                 state.add_comment(':bomb: Buildbot returned an error: `{}`'.format(err))
 
         elif word == 'clean' and realtime:
-            if not verify_auth(username, repo_cfg, state, AuthState.TRY, realtime):
+            if not verify_auth(username, repo_cfg, state, AuthState.TRY, realtime, my_username):
                 continue
             state.merge_sha = ''
             state.init_build_res([])
@@ -468,6 +509,20 @@ def parse_commands(body, username, repo_cfg, state, my_username, db, states, *, 
             state.save()
         elif word == 'hello?' or word == 'ping':
             state.add_comment(":sleepy: I'm awake I'm awake")
+        elif word.startswith('treeclosed='):
+            if not verify_auth(username, repo_cfg, state, AuthState.REVIEWER, realtime, my_username):
+                continue
+            try:
+                treeclosed = int(word[len('treeclosed='):])
+                state.change_treeclosed(treeclosed)
+            except ValueError:
+                pass
+            state.save()
+        elif word == 'treeclosed-':
+            if not verify_auth(username, repo_cfg, state, AuthState.REVIEWER, realtime, my_username):
+                continue
+            state.change_treeclosed(-1)
+            state.save()
         else:
             found = False
 
@@ -945,6 +1000,8 @@ def process_queue(states, repos, repo_cfgs, logger, buildbot_slots, db, git_cfg)
         repo_states = sorted(states[repo_label].values())
 
         for state in repo_states:
+            if state.priority < repo.treeclosed:
+                break
             if state.status == 'pending' and not state.try_:
                 break
 
@@ -1052,7 +1109,7 @@ def synchronize(repo_label, repo_cfg, logger, gh, states, repos, db, mergeable_q
         }
 
     states[repo_label] = {}
-    repos[repo_label] = repo
+    repos[repo_label] = Repository(repo, repo_label, db)
 
     for pull in repo.iter_pulls(state='open'):
         db_query(db, 'SELECT status FROM pull WHERE repo = ? AND num = ?', [repo_label, pull.number])
@@ -1204,13 +1261,17 @@ def main():
         mergeable INTEGER NOT NULL,
         UNIQUE (repo, num)
     )''')
-
+    db_query(db, '''CREATE TABLE IF NOT EXISTS repos (
+        repo TEXT NOT NULL,
+        treeclosed INTEGER NOT NULL,
+        UNIQUE (repo)
+    )''')
     for repo_label, repo_cfg in cfg['repo'].items():
         repo_cfgs[repo_label] = repo_cfg
         repo_labels[repo_cfg['owner'], repo_cfg['name']] = repo_label
 
         repo_states = {}
-        repos[repo_label] = None
+        repos[repo_label] = Repository(None, repo_label, db)
 
         db_query(db, 'SELECT num, head_sha, status, title, body, head_ref, base_ref, assignee, approved_by, priority, try_, rollup, delegate, merge_sha FROM pull WHERE repo = ?', [repo_label])
         for num, head_sha, status, title, body, head_ref, base_ref, assignee, approved_by, priority, try_, rollup, delegate, merge_sha in db.fetchall():
