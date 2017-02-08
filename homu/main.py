@@ -330,7 +330,7 @@ def parse_commands(body, username, repo_cfg, state, my_username, db, states, *, 
     state_changed = False
 
     words = list(chain.from_iterable(re.findall(r'\S+', x) for x in body.splitlines() if '@' + my_username in x))
-    if words[1:] == ["are", "you", "still", "there?"]:
+    if words[1:] == ["are", "you", "still", "there?"] and realtime:
         state.add_comment(":cake: {}\n\n![]({})".format(random.choice(PORTAL_TURRET_DIALOG), PORTAL_TURRET_IMAGE))
     for i, word in reversed(list(enumerate(words))):
         found = True
@@ -508,7 +508,7 @@ def parse_commands(body, username, repo_cfg, state, my_username, db, states, *, 
             state.init_build_res([])
 
             state.save()
-        elif word == 'hello?' or word == 'ping':
+        elif (word == 'hello?' or word == 'ping') and realtime:
             state.add_comment(":sleepy: I'm awake I'm awake")
         elif word.startswith('treeclosed='):
             if not verify_auth(username, repo_cfg, state, AuthState.REVIEWER, realtime, my_username):
