@@ -14,6 +14,7 @@ from contextlib import contextmanager
 from itertools import chain
 from queue import Queue
 import os
+import sys
 from enum import IntEnum
 import subprocess
 from .git_helper import SSH_KEY_FILE
@@ -1186,6 +1187,9 @@ def main():
     logger = logging.getLogger('homu')
     logger.setLevel(logging.DEBUG if args.verbose else logging.INFO)
     logger.addHandler(logging.StreamHandler())
+
+    if sys.getfilesystemencoding() == 'ascii':
+        logger.info('You need to set a locale compatible with unicode or homu will choke on Unicode in PR descriptions/titles. See http://stackoverflow.com/a/27931669')
 
     try:
         with open(args.config) as fp:
