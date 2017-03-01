@@ -1037,10 +1037,11 @@ def fetch_mergeability(mergeable_que):
             if state.status == 'success':
                 continue
 
-            mergeable = state.get_repo().pull_request(state.num).mergeable
-            if mergeable is None:
+            pull_request = state.get_repo().pull_request(state.num)
+            if pull_request is None or pull_request.mergeable is None:
                 time.sleep(5)
-                mergeable = state.get_repo().pull_request(state.num).mergeable
+                pull_request = state.get_repo().pull_request(state.num)
+            mergeable = pull_request is not None and pull_request.mergeable
 
             if state.mergeable is True and mergeable is False:
                 if cause:
