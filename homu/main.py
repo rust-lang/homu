@@ -915,7 +915,7 @@ def start_build(state, repo_cfgs, buildbot_slots, logger, db, git_cfg):
 
     state.test_started = time.time()
     state.set_status('pending')
-    desc = '{} commit {:.7} with merge {:.7}...'.format('Trying' if state.try_ else 'Testing', state.head_sha, state.merge_sha)
+    desc = '{} commit {} with merge {}...'.format('Trying' if state.try_ else 'Testing', state.head_sha, state.merge_sha)
     utils.github_create_status(state.get_repo(), state.head_sha, 'pending', '', desc, context='homu')
 
     state.add_comment(':hourglass: ' + desc)
