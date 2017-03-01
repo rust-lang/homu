@@ -1049,7 +1049,7 @@ def fetch_mergeability(mergeable_que):
                     if mat:
                         issue_or_commit = '#' + mat.group(1)
                     else:
-                        issue_or_commit = cause['sha'][:7]
+                        issue_or_commit = cause['sha']
                 else:
                     issue_or_commit = ''
 
