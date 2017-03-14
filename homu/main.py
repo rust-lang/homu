@@ -34,6 +34,8 @@ INTERRUPTED_BY_HOMU_FMT = 'Interrupted by Homu ({})'
 INTERRUPTED_BY_HOMU_RE = re.compile(r'Interrupted by Homu \((.+?)\)')
 TEST_TIMEOUT = 3600 * 10
 
+global_cfg = {}
+
 
 @contextmanager
 def buildbot_sess(repo_cfg):
@@ -327,7 +329,7 @@ PORTAL_TURRET_IMAGE = "https://cloud.githubusercontent.com/assets/1617736/222229
 
 
 def parse_commands(body, username, repo_cfg, state, my_username, db, states, *, realtime=False, sha=''):
-
+    global global_cfg
     state_changed = False
 
     words = list(chain.from_iterable(re.findall(r'\S+', x) for x in body.splitlines() if '@' + my_username in x))
@@ -525,6 +527,20 @@ def parse_commands(body, username, repo_cfg, state, my_username, db, states, *, 
                 continue
             state.change_treeclosed(-1)
             state.save()
+        elif 'hooks' in global_cfg:
+            for hook in global_cfg['hooks']:
+                hook_cfg = global_cfg['hooks'][hook]
+                if hook_cfg['realtime'] and not realtime:
+                    continue
+                if word == hook or word.startswith('%s=' % hook):
+                    auth = AuthState.REVIEWER if hook_cfg['access'] == "reviewer" else AuthState.TRY
+                    if not verify_auth(username, repo_cfg, state, auth, realtime, my_username):
+                        continue
+                    extra_data = ""
+                    if word.startswith('%s=' % hook):
+                        extra_data = word.split("=")[1]
+                    Thread(target=handle_hook_response, args=[state, hook_cfg, body, extra_data]).start()
+
         else:
             found = False
 
@@ -534,6 +550,21 @@ def parse_commands(body, username, repo_cfg, state, my_username, db, states, *, 
             words[i] = ''
 
     return state_changed
+
+
+def handle_hook_response(state, hook_cfg, body, extra_data):
+    post_data = {}
+    post_data["pull"] = state.num
+    post_data["body"] = body
+    post_data["extra_data"] = extra_data
+    print(post_data)
+    response = requests.post(hook_cfg['endpoint'], json=post_data)
+    print(response.text)
+
+    # We only post a response if we're configured to have a response
+    # non-realtime hooks cannot post
+    if hook_cfg['has_response'] and hook_cfg['realtime']:
+        state.add_comment(response.text)
 
 
 def git_push(git_cmd, branch, state):
@@ -1183,6 +1214,7 @@ def arguments():
 
 
 def main():
+    global global_cfg
     args = arguments()
 
     logger = logging.getLogger('homu')
@@ -1202,6 +1234,7 @@ def main():
                 cfg = json.loads(fp.read())
         else:
             raise
+    global_cfg = cfg
 
     gh = github3.login(token=cfg['github']['access_token'])
     user = gh.user()
