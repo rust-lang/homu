@@ -5,7 +5,8 @@ setup(
     version='0.2.0',
     author='Barosl Lee',
     url='https://github.com/barosl/homu',
-    description='A bot that integrates with GitHub and your favorite continuous integration service',
+    description=('A bot that integrates with GitHub '
+                 'and your favorite continuous integration service'),
 
     packages=['homu'],
     install_requires=[
