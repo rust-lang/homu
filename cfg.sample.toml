@@ -34,6 +34,18 @@ port = 54856
 # Synchronize all open PRs on startup
 #sync_on_start = false
 
+# Custom hooks can be added as well
+# Homu will ping the given endpoint with POSTdata of the form:
+# {'body': 'comment body', 'extra_data': 'extra data', 'pull': pull req number}
+# The extra data is the text specified in `@homu hookname=text`
+#
+# [hooks.hookname]
+# trigger = "hookname" # will be triggered by @homu hookname or @homu hookname=text
+# endpoint = "http://path/to/endpoint"
+# access = "try" # access level required
+# has_response = true # Should the response be posted back to github? Only allowed if realtime=true
+# realtime = true # Should it only run in realtime mode? If false, this will be replayed each time homu is started (probably not what you want)
+
 # An example configuration for repository (there can be many of these)
 [repo.NAME]
 
