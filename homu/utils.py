@@ -72,7 +72,11 @@ def logged_call(args):
 
 
 def silent_call(args):
-    return subprocess.call(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    return subprocess.call(
+        args,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
 
 
 def retry_until(inner, fail, state):
@@ -82,7 +86,7 @@ def retry_until(inner, fail, state):
     for i in range(3, 0, -1):
         try:
             inner()
-        except (github3.models.GitHubError, requests.exceptions.RequestException) as e:
+        except (github3.models.GitHubError, requests.exceptions.RequestException) as e:  # noqa
             print('* Intermittent GitHub error: {}'.format(e), file=sys.stderr)
 
             err = e
