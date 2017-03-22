@@ -1,15 +1,28 @@
 import hmac
 import json
 import urllib.parse
-from .main import (PullReqState, parse_commands, db_query,
-                   INTERRUPTED_BY_HOMU_RE, synchronize)
+from .main import (
+    PullReqState,
+    parse_commands,
+    db_query,
+    INTERRUPTED_BY_HOMU_RE,
+    synchronize,
+)
 from . import utils
 from .utils import lazy_debug
 import github3
 import jinja2
 import requests
 import pkg_resources
-from bottle import get, post, run, request, redirect, abort, response
+from bottle import (
+    get,
+    post,
+    run,
+    request,
+    redirect,
+    abort,
+    response,
+)
 import hashlib
 from threading import Thread
 import sys
@@ -40,9 +53,8 @@ def find_state(sha):
 def get_repo(repo_label, repo_cfg):
     repo = g.repos[repo_label].gh
     if not repo:
-        g.repos[repo_label] = repo = g.gh.repository(repo_cfg['owner'],
-                                                     repo_cfg['name'])
-
+        repo = g.gh.repository(repo_cfg['owner'], repo_cfg['name'])
+        g.repos[repo_label] = repo
         assert repo.owner.login == repo_cfg['owner']
         assert repo.name == repo_cfg['name']
     return repo
