@@ -163,7 +163,7 @@ def callback():
         logger.warn('/callback encountered an error '
                     'during github oauth callback')
         # probably related to https://gitlab.com/pycqa/flake8/issues/42
-        lazy_debug(logger, lambda: 'github oauth callback err: {}'.format(ex))  # NOQA
+        lazy_debug(logger, lambda: 'github oauth callback err: {}'.format(ex))  # noqa
         abort(502, 'Bad Gateway')
 
     args = urllib.parse.parse_qs(res.text)
@@ -267,7 +267,7 @@ def github():
     payload = request.body.read()
     info = request.json
 
-    lazy_debug(logger, lambda: 'info: {}'.format(utils.remove_url_keys_from_json(info)))  # NOQA
+    lazy_debug(logger, lambda: 'info: {}'.format(utils.remove_url_keys_from_json(info)))  # noqa
 
     owner_info = info['repository']['owner']
     owner = owner_info.get('login') or owner_info['name']
@@ -332,7 +332,7 @@ def github():
                                  info['repository']['name'], g.repos)
             state.title = info['pull_request']['title']
             state.body = info['pull_request']['body']
-            state.head_ref = info['pull_request']['head']['repo']['owner']['login'] + ':' + info['pull_request']['head']['ref']  # NOQA
+            state.head_ref = info['pull_request']['head']['repo']['owner']['login'] + ':' + info['pull_request']['head']['ref']  # noqa
             state.base_ref = info['pull_request']['base']['ref']
             state.set_mergeable(info['pull_request']['mergeable'])
             state.assignee = (info['pull_request']['assignee']['login'] if
@@ -407,7 +407,7 @@ def github():
             state.save()
 
         else:
-            lazy_debug(logger, lambda: 'Invalid pull_request action: {}'.format(action))  # NOQA
+            lazy_debug(logger, lambda: 'Invalid pull_request action: {}'.format(action))  # noqa
 
     elif event_type == 'push':
         ref = info['ref'][len('refs/heads/'):]
@@ -478,7 +478,7 @@ def github():
 
 def report_build_res(succ, url, builder, state, logger, repo_cfg):
     lazy_debug(logger,
-               lambda: 'build result {}: builder = {}, succ = {}, current build_res = {}'  # NOQA
+               lambda: 'build result {}: builder = {}, succ = {}, current build_res = {}'  # noqa
                        .format(state, builder, succ,
                                state.build_res_summary()))
 
@@ -491,7 +491,7 @@ def report_build_res(succ, url, builder, state, logger, repo_cfg):
             utils.github_create_status(state.get_repo(), state.head_sha,
                                        'success', url, desc, context='homu')
 
-            urls = ', '.join('[{}]({})'.format(builder, x['url']) for builder, x in sorted(state.build_res.items()))  # NOQA
+            urls = ', '.join('[{}]({})'.format(builder, x['url']) for builder, x in sorted(state.build_res.items()))  # noqa
             test_comment = ':sunny: {} - {}'.format(desc, urls)
 
             if state.approved_by and not state.try_:
@@ -567,14 +567,14 @@ def buildbot():
                 state, repo_label = find_state(props['revision'])
             except ValueError:
                 lazy_debug(logger,
-                           lambda: 'Invalid commit ID from Buildbot: {}'.format(props['revision']))  # NOQA
+                           lambda: 'Invalid commit ID from Buildbot: {}'.format(props['revision']))  # noqa
                 continue
 
-            lazy_debug(logger, lambda: 'state: {}, {}'.format(state, state.build_res_summary()))  # NOQA
+            lazy_debug(logger, lambda: 'state: {}, {}'.format(state, state.build_res_summary()))  # noqa
 
             if info['builderName'] not in state.build_res:
                 lazy_debug(logger,
-                           lambda: 'Invalid builder from Buildbot: {}'.format(info['builderName']))  # NOQA
+                           lambda: 'Invalid builder from Buildbot: {}'.format(info['builderName']))  # noqa
                 continue
 
             repo_cfg = g.repo_cfgs[repo_label]
@@ -599,7 +599,7 @@ def buildbot():
 
                 if step_name:
                     try:
-                        url = ('{}/builders/{}/builds/{}/steps/{}/logs/interrupt'  # NOQA
+                        url = ('{}/builders/{}/builds/{}/steps/{}/logs/interrupt'  # noqa
                                ).format(repo_cfg['buildbot']['url'],
                                         info['builderName'],
                                         props['buildnumber'],
@@ -610,7 +610,7 @@ def buildbot():
                                     'github logs request')
                         # probably related to
                         # https://gitlab.com/pycqa/flake8/issues/42
-                        lazy_debug(logger, lambda: 'buildbot logs err: {}'.format(ex))  # NOQA
+                        lazy_debug(logger, lambda: 'buildbot logs err: {}'.format(ex))  # noqa
                         abort(502, 'Bad Gateway')
 
                     mat = INTERRUPTED_BY_HOMU_RE.search(res.text)
@@ -683,18 +683,18 @@ def travis():
 
     info = json.loads(request.forms.payload)
 
-    lazy_debug(logger, lambda: 'info: {}'.format(utils.remove_url_keys_from_json(info)))  # NOQA
+    lazy_debug(logger, lambda: 'info: {}'.format(utils.remove_url_keys_from_json(info)))  # noqa
 
     try:
         state, repo_label = find_state(info['commit'])
     except ValueError:
-        lazy_debug(logger, lambda: 'Invalid commit ID from Travis: {}'.format(info['commit']))  # NOQA
+        lazy_debug(logger, lambda: 'Invalid commit ID from Travis: {}'.format(info['commit']))  # noqa
         return 'OK'
 
-    lazy_debug(logger, lambda: 'state: {}, {}'.format(state, state.build_res_summary()))  # NOQA
+    lazy_debug(logger, lambda: 'state: {}, {}'.format(state, state.build_res_summary()))  # noqa
 
     if 'travis' not in state.build_res:
-        lazy_debug(logger, lambda: 'travis is not a monitored target for {}'.format(state))  # NOQA
+        lazy_debug(logger, lambda: 'travis is not a monitored target for {}'.format(state))  # noqa
         return 'OK'
 
     repo_cfg = g.repo_cfgs[repo_label]
@@ -808,7 +808,7 @@ def admin():
 def start(cfg, states, queue_handler, repo_cfgs, repos, logger,
           buildbot_slots, my_username, db, repo_labels, mergeable_que, gh):
     env = jinja2.Environment(
-        loader=jinja2.FileSystemLoader(pkg_resources.resource_filename(__name__, 'html')),  # NOQA
+        loader=jinja2.FileSystemLoader(pkg_resources.resource_filename(__name__, 'html')),  # noqa
         autoescape=True,
     )
     tpls = {}
