@@ -1,14 +1,28 @@
 import hmac
 import json
 import urllib.parse
-from .main import PullReqState, parse_commands, db_query, INTERRUPTED_BY_HOMU_RE, synchronize
+from .main import (
+    PullReqState,
+    parse_commands,
+    db_query,
+    INTERRUPTED_BY_HOMU_RE,
+    synchronize,
+)
 from . import utils
 from .utils import lazy_debug
 import github3
 import jinja2
 import requests
 import pkg_resources
-from bottle import get, post, run, request, redirect, abort, response
+from bottle import (
+    get,
+    post,
+    run,
+    request,
+    redirect,
+    abort,
+    response,
+)
 import hashlib
 from threading import Thread
 import sys
@@ -39,8 +53,8 @@ def find_state(sha):
 def get_repo(repo_label, repo_cfg):
     repo = g.repos[repo_label].gh
     if not repo:
-        g.repos[repo_label] = repo = g.gh.repository(repo_cfg['owner'], repo_cfg['name'])
-
+        repo = g.gh.repository(repo_cfg['owner'], repo_cfg['name'])
+        g.repos[repo_label] = repo
         assert repo.owner.login == repo_cfg['owner']
         assert repo.name == repo_cfg['name']
     return repo
@@ -48,7 +62,8 @@ def get_repo(repo_label, repo_cfg):
 
 @get('/')
 def index():
-    return g.tpls['index'].render(repos=[g.repos[label] for label in sorted(g.repos)])
+    return g.tpls['index'].render(repos=[g.repos[label]
+                                         for label in sorted(g.repos)])
 
 
 @get('/queue/<repo_label:path>')
@@ -81,7 +96,8 @@ def queue(repo_label):
     pull_states = sorted(states)
     rows = []
     for state in pull_states:
-        treeclosed = single_repo_closed or state.priority < g.repos[state.repo_label].treeclosed
+        treeclosed = (single_repo_closed or
+                      state.priority < g.repos[state.repo_label].treeclosed)
         status_ext = ''
 
         if state.try_:
@@ -94,15 +110,19 @@ def queue(repo_label):
             'status': state.get_status(),
             'status_ext': status_ext,
             'priority': 'rollup' if state.rollup else state.priority,
-            'url': 'https://github.com/{}/{}/pull/{}'.format(state.owner, state.name, state.num),
+            'url': 'https://github.com/{}/{}/pull/{}'.format(state.owner,
+                                                             state.name,
+                                                             state.num),
             'num': state.num,
             'approved_by': state.approved_by,
             'title': state.title,
             'head_ref': state.head_ref,
-            'mergeable': 'yes' if state.mergeable is True else 'no' if state.mergeable is False else '',
+            'mergeable': ('yes' if state.mergeable is True else
+                          'no' if state.mergeable is False else ''),
             'assignee': state.assignee,
             'repo_label': state.repo_label,
-            'repo_url': 'https://github.com/{}/{}'.format(state.owner, state.name),
+            'repo_url': 'https://github.com/{}/{}'.format(state.owner,
+                                                          state.name),
             'greyed': "treeclosed" if treeclosed else "",
         })
 
@@ -115,7 +135,8 @@ def queue(repo_label):
         total=len(pull_states),
         approved=len([x for x in pull_states if x.approved_by]),
         rolled_up=len([x for x in pull_states if x.rollup]),
-        failed=len([x for x in pull_states if x.status == 'failure' or x.status == 'error']),
+        failed=len([x for x in pull_states if x.status == 'failure' or
+                   x.status == 'error']),
         multiple=multiple,
     )
 
@@ -130,17 +151,19 @@ def callback():
     state = json.loads(request.query.state)
 
     lazy_debug(logger, lambda: 'state: {}'.format(state))
+    oauth_url = 'https://github.com/login/oauth/access_token'
 
     try:
-        res = requests.post('https://github.com/login/oauth/access_token', data={
+        res = requests.post(oauth_url, data={
             'client_id': g.cfg['github']['app_client_id'],
             'client_secret': g.cfg['github']['app_client_secret'],
             'code': code,
         })
     except Exception as ex:
-        logger.warn('/callback encountered an error during github oauth callback')
+        logger.warn('/callback encountered an error '
+                    'during github oauth callback')
         # probably related to https://gitlab.com/pycqa/flake8/issues/42
-        lazy_debug(logger, lambda: 'github oauth callback err: {}'.format(ex))  # NOQA
+        lazy_debug(logger, lambda: 'github oauth callback err: {}'.format(ex))  # noqa
         abort(502, 'Bad Gateway')
 
     args = urllib.parse.parse_qs(res.text)
@@ -205,7 +228,8 @@ def rollup(user_gh, state, repo_label, repo_cfg, repo):
         )
 
         try:
-            user_repo.merge(repo_cfg.get('branch', {}).get('rollup', 'rollup'), state.head_sha, merge_msg)
+            rollup = repo_cfg.get('branch', {}).get('rollup', 'rollup')
+            user_repo.merge(rollup, state.head_sha, merge_msg)
         except github3.models.GitHubError as e:
             if e.code != 409:
                 raise
@@ -221,10 +245,11 @@ def rollup(user_gh, state, repo_label, repo_cfg, repo):
     )
 
     try:
+        rollup = repo_cfg.get('branch', {}).get('rollup', 'rollup')
         pull = base_repo.create_pull(
             title,
             state.base_ref,
-            user_repo.owner.login + ':' + repo_cfg.get('branch', {}).get('rollup', 'rollup'),
+            user_repo.owner.login + ':' + rollup,
             body,
         )
     except github3.models.GitHubError as e:
@@ -242,7 +267,7 @@ def github():
     payload = request.body.read()
     info = request.json
 
-    lazy_debug(logger, lambda: 'info: {}'.format(utils.remove_url_keys_from_json(info)))
+    lazy_debug(logger, lambda: 'info: {}'.format(utils.remove_url_keys_from_json(info)))  # noqa
 
     owner_info = info['repository']['owner']
     owner = owner_info.get('login') or owner_info['name']
@@ -301,22 +326,26 @@ def github():
             state.save()
 
         elif action in ['opened', 'reopened']:
-            state = PullReqState(pull_num, head_sha, '', g.db, repo_label, g.mergeable_que, g.gh, info['repository']['owner']['login'], info['repository']['name'], g.repos)
+            state = PullReqState(pull_num, head_sha, '', g.db, repo_label,
+                                 g.mergeable_que, g.gh,
+                                 info['repository']['owner']['login'],
+                                 info['repository']['name'], g.repos)
             state.title = info['pull_request']['title']
             state.body = info['pull_request']['body']
-            state.head_ref = info['pull_request']['head']['repo']['owner']['login'] + ':' + info['pull_request']['head']['ref']
+            state.head_ref = info['pull_request']['head']['repo']['owner']['login'] + ':' + info['pull_request']['head']['ref']  # noqa
             state.base_ref = info['pull_request']['base']['ref']
             state.set_mergeable(info['pull_request']['mergeable'])
-            state.assignee = info['pull_request']['assignee']['login'] if info['pull_request']['assignee'] else ''
+            state.assignee = (info['pull_request']['assignee']['login'] if
+                              info['pull_request']['assignee'] else '')
 
             found = False
 
             if action == 'reopened':
                 # FIXME: Review comments are ignored here
-                for comment in state.get_repo().issue(pull_num).iter_comments():
+                for c in state.get_repo().issue(pull_num).iter_comments():
                     found = parse_commands(
-                        comment.body,
-                        comment.user.login,
+                        c.body,
+                        c.user.login,
                         repo_cfg,
                         state,
                         g.my_username,
@@ -325,7 +354,8 @@ def github():
                     ) or found
 
                 status = ''
-                for info in utils.github_iter_statuses(state.get_repo(), state.head_sha):
+                for info in utils.github_iter_statuses(state.get_repo(),
+                                                       state.head_sha):
                     if info.context == 'homu':
                         status = info.state
                         break
@@ -351,26 +381,33 @@ def github():
                     )
 
                 def fail(err):
-                    state.add_comment(':boom: Failed to recover from the artificial commit. See {} for details. ({})'.format(state.fake_merge_sha, err))
+                    state.add_comment(':boom: Failed to recover from the '
+                                      'artificial commit. See {} for details.'
+                                      ' ({})'.format(state.fake_merge_sha,
+                                                     err))
 
                 utils.retry_until(inner, fail, state)
 
             del g.states[repo_label][pull_num]
 
-            db_query(g.db, 'DELETE FROM pull WHERE repo = ? AND num = ?', [repo_label, pull_num])
-            db_query(g.db, 'DELETE FROM build_res WHERE repo = ? AND num = ?', [repo_label, pull_num])
-            db_query(g.db, 'DELETE FROM mergeable WHERE repo = ? AND num = ?', [repo_label, pull_num])
+            db_query(g.db, 'DELETE FROM pull WHERE repo = ? AND num = ?',
+                     [repo_label, pull_num])
+            db_query(g.db, 'DELETE FROM build_res WHERE repo = ? AND num = ?',
+                     [repo_label, pull_num])
+            db_query(g.db, 'DELETE FROM mergeable WHERE repo = ? AND num = ?',
+                     [repo_label, pull_num])
 
             g.queue_handler()
 
         elif action in ['assigned', 'unassigned']:
             state = g.states[repo_label][pull_num]
-            state.assignee = info['pull_request']['assignee']['login'] if info['pull_request']['assignee'] else ''
+            state.assignee = (info['pull_request']['assignee']['login'] if
+                              info['pull_request']['assignee'] else '')
 
             state.save()
 
         else:
-            lazy_debug(logger, lambda: 'Invalid pull_request action: {}'.format(action))
+            lazy_debug(logger, lambda: 'Invalid pull_request action: {}'.format(action))  # noqa
 
     elif event_type == 'push':
         ref = info['ref'][len('refs/heads/'):]
@@ -433,15 +470,17 @@ def github():
             if row['name'] == state.base_ref:
                 return 'OK'
 
-        report_build_res(info['state'] == 'success', info['target_url'], 'status-' + status_name, state, logger, repo_cfg)
+        report_build_res(info['state'] == 'success', info['target_url'],
+                         'status-' + status_name, state, logger, repo_cfg)
 
     return 'OK'
 
 
 def report_build_res(succ, url, builder, state, logger, repo_cfg):
     lazy_debug(logger,
-               lambda: 'build result {}: builder = {}, succ = {}, current build_res = {}'
-                       .format(state, builder, succ, state.build_res_summary()))
+               lambda: 'build result {}: builder = {}, succ = {}, current build_res = {}'  # noqa
+                       .format(state, builder, succ,
+                               state.build_res_summary()))
 
     state.set_build_res(builder, succ, url)
 
@@ -449,40 +488,59 @@ def report_build_res(succ, url, builder, state, logger, repo_cfg):
         if all(x['res'] for x in state.build_res.values()):
             state.set_status('success')
             desc = 'Test successful'
-            utils.github_create_status(state.get_repo(), state.head_sha, 'success', url, desc, context='homu')
+            utils.github_create_status(state.get_repo(), state.head_sha,
+                                       'success', url, desc, context='homu')
 
-            urls = ', '.join('[{}]({})'.format(builder, x['url']) for builder, x in sorted(state.build_res.items()))
+            urls = ', '.join('[{}]({})'.format(builder, x['url']) for builder, x in sorted(state.build_res.items()))  # noqa
             test_comment = ':sunny: {} - {}'.format(desc, urls)
 
             if state.approved_by and not state.try_:
-                comment = test_comment + '\n' + 'Approved by: {}\nPushing {} to {}...'.format(state.approved_by, state.merge_sha, state.base_ref)
+                comment = (test_comment + '\n' +
+                           'Approved by: {}\nPushing {} to {}...'
+                           ).format(state.approved_by, state.merge_sha,
+                                    state.base_ref)
                 state.add_comment(comment)
                 try:
                     try:
-                        utils.github_set_ref(state.get_repo(), 'heads/' + state.base_ref, state.merge_sha)
+                        utils.github_set_ref(state.get_repo(), 'heads/' +
+                                             state.base_ref, state.merge_sha)
                     except github3.models.GitHubError:
-                        utils.github_create_status(state.get_repo(), state.merge_sha, 'success', '', 'Branch protection bypassed', context='homu')
-                        utils.github_set_ref(state.get_repo(), 'heads/' + state.base_ref, state.merge_sha)
+                        utils.github_create_status(
+                            state.get_repo(),
+                            state.merge_sha,
+                            'success', '',
+                            'Branch protection bypassed',
+                            context='homu')
+                        utils.github_set_ref(state.get_repo(), 'heads/' +
+                                             state.base_ref, state.merge_sha)
 
                     state.fake_merge(repo_cfg)
 
                 except github3.models.GitHubError as e:
                     state.set_status('error')
-                    desc = 'Test was successful, but fast-forwarding failed: {}'.format(e)
-                    utils.github_create_status(state.get_repo(), state.head_sha, 'error', url, desc, context='homu')
+                    desc = ('Test was successful, but fast-forwarding failed:'
+                            ' {}'.format(e))
+                    utils.github_create_status(state.get_repo(),
+                                               state.head_sha, 'error', url,
+                                               desc, context='homu')
 
                     state.add_comment(':eyes: ' + desc)
             else:
-                comment = test_comment + '\n' + 'State: approved={} try={}'.format(state.approved_by, state.try_)
+                comment = (test_comment + '\n' +
+                           'State: approved={} try={}'
+                           ).format(state.approved_by, state.try_)
                 state.add_comment(comment)
 
     else:
         if state.status == 'pending':
             state.set_status('failure')
             desc = 'Test failed'
-            utils.github_create_status(state.get_repo(), state.head_sha, 'failure', url, desc, context='homu')
+            utils.github_create_status(state.get_repo(), state.head_sha,
+                                       'failure', url, desc, context='homu')
 
-            state.add_comment(':broken_heart: {} - [{}]({})'.format(desc, builder, url))
+            state.add_comment(':broken_heart: {} - [{}]({})'.format(desc,
+                                                                    builder,
+                                                                    url))
 
     g.queue_handler()
 
@@ -509,14 +567,14 @@ def buildbot():
                 state, repo_label = find_state(props['revision'])
             except ValueError:
                 lazy_debug(logger,
-                           lambda: 'Invalid commit ID from Buildbot: {}'.format(props['revision']))
+                           lambda: 'Invalid commit ID from Buildbot: {}'.format(props['revision']))  # noqa
                 continue
 
-            lazy_debug(logger, lambda: 'state: {}, {}'.format(state, state.build_res_summary()))
+            lazy_debug(logger, lambda: 'state: {}, {}'.format(state, state.build_res_summary()))  # noqa
 
             if info['builderName'] not in state.build_res:
                 lazy_debug(logger,
-                           lambda: 'Invalid builder from Buildbot: {}'.format(info['builderName']))
+                           lambda: 'Invalid builder from Buildbot: {}'.format(info['builderName']))  # noqa
                 continue
 
             repo_cfg = g.repo_cfgs[repo_label]
@@ -541,30 +599,38 @@ def buildbot():
 
                 if step_name:
                     try:
-                        res = requests.get('{}/builders/{}/builds/{}/steps/{}/logs/interrupt'.format(
-                            repo_cfg['buildbot']['url'],
-                            info['builderName'],
-                            props['buildnumber'],
-                            step_name,
-                        ))
+                        url = ('{}/builders/{}/builds/{}/steps/{}/logs/interrupt'  # noqa
+                               ).format(repo_cfg['buildbot']['url'],
+                                        info['builderName'],
+                                        props['buildnumber'],
+                                        step_name,)
+                        res = requests.get(url)
                     except Exception as ex:
-                        logger.warn('/buildbot encountered an error during github logs request')
-                        # probably related to https://gitlab.com/pycqa/flake8/issues/42
-                        lazy_debug(logger, lambda: 'buildbot logs err: {}'.format(ex))  # NOQA
+                        logger.warn('/buildbot encountered an error during '
+                                    'github logs request')
+                        # probably related to
+                        # https://gitlab.com/pycqa/flake8/issues/42
+                        lazy_debug(logger, lambda: 'buildbot logs err: {}'.format(ex))  # noqa
                         abort(502, 'Bad Gateway')
 
                     mat = INTERRUPTED_BY_HOMU_RE.search(res.text)
                     if mat:
                         interrupt_token = mat.group(1)
-                        if getattr(state, 'interrupt_token', '') != interrupt_token:
+                        if getattr(state, 'interrupt_token',
+                                   '') != interrupt_token:
                             state.interrupt_token = interrupt_token
 
                             if state.status == 'pending':
                                 state.set_status('')
 
-                                desc = ':snowman: The build was interrupted to prioritize another pull request.'
+                                desc = (':snowman: The build was interrupted '
+                                        'to prioritize another pull request.')
                                 state.add_comment(desc)
-                                utils.github_create_status(state.get_repo(), state.head_sha, 'error', url, desc, context='homu')
+                                utils.github_create_status(state.get_repo(),
+                                                           state.head_sha,
+                                                           'error', url,
+                                                           desc,
+                                                           context='homu')
 
                                 g.queue_handler()
 
@@ -573,7 +639,8 @@ def buildbot():
                 else:
                     logger.error('Corrupt payload from Buildbot')
 
-            report_build_res(build_succ, url, info['builderName'], state, logger, repo_cfg)
+            report_build_res(build_succ, url, info['builderName'],
+                             state, logger, repo_cfg)
 
         elif row['event'] == 'buildStarted':
             info = row['payload']['build']
@@ -616,37 +683,41 @@ def travis():
 
     info = json.loads(request.forms.payload)
 
-    lazy_debug(logger, lambda: 'info: {}'.format(utils.remove_url_keys_from_json(info)))
+    lazy_debug(logger, lambda: 'info: {}'.format(utils.remove_url_keys_from_json(info)))  # noqa
 
     try:
         state, repo_label = find_state(info['commit'])
     except ValueError:
-        lazy_debug(logger, lambda: 'Invalid commit ID from Travis: {}'.format(info['commit']))
+        lazy_debug(logger, lambda: 'Invalid commit ID from Travis: {}'.format(info['commit']))  # noqa
         return 'OK'
 
-    lazy_debug(logger, lambda: 'state: {}, {}'.format(state, state.build_res_summary()))
+    lazy_debug(logger, lambda: 'state: {}, {}'.format(state, state.build_res_summary()))  # noqa
 
     if 'travis' not in state.build_res:
-        lazy_debug(logger, lambda: 'travis is not a monitored target for {}'.format(state))
+        lazy_debug(logger, lambda: 'travis is not a monitored target for {}'.format(state))  # noqa
         return 'OK'
 
     repo_cfg = g.repo_cfgs[repo_label]
     token = repo_cfg['travis']['token']
     auth_header = request.headers['Authorization']
-    code = hashlib.sha256(('{}/{}{}'.format(state.owner, state.name, token)).encode('utf-8')).hexdigest()
+
+    slug = '{}/{}{}'.format(state.owner, state.name, token)
+    code = hashlib.sha256((slug).encode('utf-8')).hexdigest()
+
     if auth_header != code:
         # this isn't necessarily an error, e.g. maybe someone is
         # fabricating travis notifications to try to trick Homu, but,
         # I imagine that this will most often occur because a repo is
         # misconfigured.
-        logger.warn('authorization failed for {}, maybe the repo has the wrong travis token? '
-                    'header = {}, computed = {}'
+        logger.warn('authorization failed for {}, maybe the repo has the '
+                    'wrong travis token? header = {}, computed = {}'
                     .format(state, auth_header, code))
         abort(400, 'Authorization failed')
 
     succ = info['result'] == 0
 
-    report_build_res(succ, info['build_url'], 'travis', state, logger, repo_cfg)
+    report_build_res(succ, info['build_url'], 'travis', state, logger,
+                     repo_cfg)
 
     return 'OK'
 
@@ -655,7 +726,10 @@ def synch(user_gh, state, repo_label, repo_cfg, repo):
     if not repo.is_collaborator(user_gh.user().login):
         abort(400, 'You are not a collaborator')
 
-    Thread(target=synchronize, args=[repo_label, repo_cfg, g.logger, g.gh, g.states, g.repos, g.db, g.mergeable_que, g.my_username, g.repo_labels]).start()
+    Thread(target=synchronize, args=[repo_label, repo_cfg, g.logger,
+                                     g.gh, g.states, g.repos, g.db,
+                                     g.mergeable_que, g.my_username,
+                                     g.repo_labels]).start()
 
     return 'Synchronizing {}...'.format(repo_label)
 
@@ -664,7 +738,9 @@ def synch_all():
     @retry(wait_exponential_multiplier=1000, wait_exponential_max=600000)
     def sync_repo(repo_label, g):
         try:
-            synchronize(repo_label, g.repo_cfgs[repo_label], g.logger, g.gh, g.states, g.repos, g.db, g.mergeable_que, g.my_username, g.repo_labels)
+            synchronize(repo_label, g.repo_cfgs[repo_label], g.logger, g.gh,
+                        g.states, g.repos, g.db, g.mergeable_que,
+                        g.my_username, g.repo_labels)
         except:
             print('* Error while synchronizing {}'.format(repo_label))
             traceback.print_exc()
@@ -689,8 +765,10 @@ def admin():
         g.repo_cfgs[repo_label] = repo_cfg
         g.repo_labels[repo_cfg['owner'], repo_cfg['name']] = repo_label
 
-        Thread(target=synchronize, args=[repo_label, repo_cfg, g.logger, g.gh, g.states, g.repos, g.db, g.mergeable_que, g.my_username, g.repo_labels]).start()
-
+        Thread(target=synchronize, args=[repo_label, repo_cfg, g.logger,
+                                         g.gh, g.states, g.repos, g.db,
+                                         g.mergeable_que, g.my_username,
+                                         g.repo_labels]).start()
         return 'OK'
 
     elif request.json['cmd'] == 'repo_del':
@@ -727,9 +805,10 @@ def admin():
     return 'Unrecognized command'
 
 
-def start(cfg, states, queue_handler, repo_cfgs, repos, logger, buildbot_slots, my_username, db, repo_labels, mergeable_que, gh):
+def start(cfg, states, queue_handler, repo_cfgs, repos, logger,
+          buildbot_slots, my_username, db, repo_labels, mergeable_que, gh):
     env = jinja2.Environment(
-        loader=jinja2.FileSystemLoader(pkg_resources.resource_filename(__name__, 'html')),
+        loader=jinja2.FileSystemLoader(pkg_resources.resource_filename(__name__, 'html')),  # noqa
         autoescape=True,
     )
     tpls = {}
@@ -755,7 +834,9 @@ def start(cfg, states, queue_handler, repo_cfgs, repos, logger, buildbot_slots, 
         Thread(target=synch_all).start()
 
     try:
-        run(host=cfg['web'].get('host', '0.0.0.0'), port=cfg['web']['port'], server='waitress')
+        run(host=cfg['web'].get('host', '0.0.0.0'),
+            port=cfg['web']['port'],
+            server='waitress')
     except OSError as e:
         print(e, file=sys.stderr)
         os._exit(1)
