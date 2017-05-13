@@ -23,7 +23,6 @@ from bottle import (
     abort,
     response,
 )
-import hashlib
 from threading import Thread
 import sys
 import os
@@ -673,51 +672,6 @@ def buildbot():
                 g.buildbot_slots[0] = ''
 
                 g.queue_handler()
-
-    return 'OK'
-
-
-@post('/travis')
-def travis():
-    logger = g.logger.getChild('travis')
-
-    info = json.loads(request.forms.payload)
-
-    lazy_debug(logger, lambda: 'info: {}'.format(utils.remove_url_keys_from_json(info)))  # noqa
-
-    try:
-        state, repo_label = find_state(info['commit'])
-    except ValueError:
-        lazy_debug(logger, lambda: 'Invalid commit ID from Travis: {}'.format(info['commit']))  # noqa
-        return 'OK'
-
-    lazy_debug(logger, lambda: 'state: {}, {}'.format(state, state.build_res_summary()))  # noqa
-
-    if 'travis' not in state.build_res:
-        lazy_debug(logger, lambda: 'travis is not a monitored target for {}'.format(state))  # noqa
-        return 'OK'
-
-    repo_cfg = g.repo_cfgs[repo_label]
-    token = repo_cfg['travis']['token']
-    auth_header = request.headers['Authorization']
-
-    slug = '{}/{}{}'.format(state.owner, state.name, token)
-    code = hashlib.sha256((slug).encode('utf-8')).hexdigest()
-
-    if auth_header != code:
-        # this isn't necessarily an error, e.g. maybe someone is
-        # fabricating travis notifications to try to trick Homu, but,
-        # I imagine that this will most often occur because a repo is
-        # misconfigured.
-        logger.warn('authorization failed for {}, maybe the repo has the '
-                    'wrong travis token? header = {}, computed = {}'
-                    .format(state, auth_header, code))
-        abort(400, 'Authorization failed')
-
-    succ = info['result'] == 0
-
-    report_build_res(succ, info['build_url'], 'travis', state, logger,
-                     repo_cfg)
 
     return 'OK'
 
