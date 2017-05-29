@@ -520,10 +520,18 @@ def parse_commands(body, username, repo_cfg, state, my_username, db, states,
                                realtime, my_username):
                 continue
             try:
-                state.priority = int(word[len('p='):])
+                pvalue = int(word[len('p='):])
             except ValueError:
-                pass
+                continue
 
+            if pvalue > global_cfg['max_priority']:
+                if realtime:
+                    state.add_comment(
+                        ':stop_sign: Priority higher than @{} is ignored.'
+                        .format(global_cfg['max_priority'])
+                    )
+                continue
+            state.priority = pvalue
             state.save()
 
         elif word.startswith('delegate='):
