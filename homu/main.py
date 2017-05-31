@@ -643,6 +643,7 @@ def parse_commands(body, username, repo_cfg, state, my_username, db, states,
             state.change_treeclosed(-1)
             state.save()
         elif 'hooks' in global_cfg:
+            hook_found = False
             for hook in global_cfg['hooks']:
                 hook_cfg = global_cfg['hooks'][hook]
                 if hook_cfg['realtime'] and not realtime:
@@ -654,6 +655,7 @@ def parse_commands(body, username, repo_cfg, state, my_username, db, states,
                     else:
                         if not _try_auth_verified():
                             continue
+                    hook_found = True
                     extra_data = ""
                     if word.startswith('%s=' % hook):
                         extra_data = word.split("=")[1]
@@ -661,6 +663,8 @@ def parse_commands(body, username, repo_cfg, state, my_username, db, states,
                         target=handle_hook_response,
                         args=[state, hook_cfg, body, extra_data]
                     ).start()
+            if not hook_found:
+                found = False
 
         else:
             found = False
