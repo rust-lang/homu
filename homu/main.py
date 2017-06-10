@@ -1084,6 +1084,9 @@ def start_build(state, repo_cfgs, buildbot_slots, logger, db, git_cfg):
         for key, value in repo_cfg['status'].items():
             context = value.get('context')
             if context is not None:
+                if state.try_ and not value.get('try', True):
+                    # Skip this builder for tries.
+                    continue
                 builders += ['status-' + key]
                 # We have an optional fast path if the Travis test passed
                 # for a given commit and master is unchanged, we can do
