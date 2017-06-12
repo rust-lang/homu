@@ -112,6 +112,9 @@ secret = ""
 ## String label set by status updates
 #context = ""
 #
+## Boolean which indicates whether the builder is included in try builds (defaults to true)
+#try = false
+#
 ## Equivalent context to look for on the PR itself if checking whether the
 ## build should be exempted. If omitted, looks for the same context. This is
 ## only used if status_based_exemption is true.
