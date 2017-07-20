@@ -1239,7 +1239,7 @@ def process_queue(states, repos, repo_cfgs, logger, buildbot_slots, db,
 
         for state in repo_states:
             if state.priority < repo.treeclosed:
-                break
+                continue
             if state.status == 'pending' and not state.try_:
                 break
 
