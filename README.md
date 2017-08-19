@@ -96,7 +96,10 @@ the name of the repository you are configuring homu for.
    
 4. Add your new GitHub account as a Collaborator to the GitHub repo you are
    setting up homu for. This can be done in repo (NOT user) "Settings", then
-   "Collaborators". 
+   "Collaborators".
+   
+     4.1. Make sure you login as the new GitHub account and that you **accept 
+          the collaborator invitation** you just sent! 
 
 5. Add a Webhook to your repository. This is done under repo (NOT user)
    "Settings", then "Webhooks". Click "Add webhook", the set:
