@@ -527,7 +527,7 @@ def parse_commands(body, username, repo_cfg, state, my_username, db, states,
             if pvalue > global_cfg['max_priority']:
                 if realtime:
                     state.add_comment(
-                        ':stop_sign: Priority higher than @{} is ignored.'
+                        ':stop_sign: Priority higher than {} is ignored.'
                         .format(global_cfg['max_priority'])
                     )
                 continue
