@@ -5,6 +5,7 @@ import json
 import re
 import functools
 from . import utils
+from .utils import lazy_debug
 import logging
 from threading import Thread, Lock
 import time
@@ -370,7 +371,7 @@ def verify_auth(username, repo_cfg, state, auth, realtime, my_username):
                 else:
                     reply += 'Not in reviewers'
             elif auth == AuthState.TRY:
-                    reply += 'and not in try users'
+                reply += 'and not in try users'
             state.add_comment(reply)
         return False
 
@@ -745,10 +746,15 @@ def branch_equal_to_merge(git_cmd, state, branch):
     return utils.silent_call(git_cmd('diff', '--quiet', 'FETCH_HEAD', branch)) == 0  # noqa
 
 
-def create_merge(state, repo_cfg, branch, git_cfg, ensure_merge_equal=False):
+def create_merge(state, repo_cfg, branch, logger, git_cfg,
+                 ensure_merge_equal=False):
     base_sha = state.get_repo().ref('heads/' + state.base_ref).object.sha
 
     state.refresh()
+
+    lazy_debug(logger,
+               lambda: "create_merge: attempting merge {} into {} on {!r}"
+               .format(state.head_sha, branch, state.get_repo()))
 
     merge_msg = 'Auto merge of #{} - {}, r={}\n\n{}\n\n{}'.format(
         state.num,
@@ -920,13 +926,15 @@ def get_github_merge_sha(state, repo_cfg, git_cfg):
     return subprocess.check_output(git_cmd('rev-parse', 'FETCH_HEAD')).decode('ascii').strip()  # noqa
 
 
-def do_exemption_merge(state, repo_cfg, git_cfg, url, check_merge, reason):
+def do_exemption_merge(state, logger, repo_cfg, git_cfg, url, check_merge,
+                       reason):
 
     try:
         merge_sha = create_merge(
             state,
             repo_cfg,
             state.base_ref,
+            logger,
             git_cfg,
             check_merge)
     except subprocess.CalledProcessError:
@@ -951,7 +959,7 @@ def do_exemption_merge(state, repo_cfg, git_cfg, url, check_merge, reason):
     return True
 
 
-def try_travis_exemption(state, repo_cfg, git_cfg):
+def try_travis_exemption(state, logger, repo_cfg, git_cfg):
 
     travis_info = None
     for info in utils.github_iter_statuses(state.get_repo(), state.head_sha):
@@ -986,14 +994,14 @@ def try_travis_exemption(state, repo_cfg, git_cfg):
     if (travis_commit.parents[0]['sha'] == base_sha and
             travis_commit.parents[1]['sha'] == state.head_sha):
         # make sure we check against the github merge sha before pushing
-        return do_exemption_merge(state, repo_cfg, git_cfg,
+        return do_exemption_merge(state, logger, repo_cfg, git_cfg,
                                   travis_info.target_url, True,
                                   "merge already tested by Travis CI")
 
     return False
 
 
-def try_status_exemption(state, repo_cfg, git_cfg):
+def try_status_exemption(state, logger, repo_cfg, git_cfg):
 
     # If all the builders are status-based, then we can do some checks to
     # exempt testing under the following cases:
@@ -1032,7 +1040,7 @@ def try_status_exemption(state, repo_cfg, git_cfg):
     # is the PR fully rebased?
     base_sha = state.get_repo().ref('heads/' + state.base_ref).object.sha
     if pull_is_rebased(state, repo_cfg, git_cfg, base_sha):
-        return do_exemption_merge(state, repo_cfg, git_cfg, '', False,
+        return do_exemption_merge(state, logger, repo_cfg, git_cfg, '', False,
                                   "pull fully rebased and already tested")
 
     # check if we can use the github merge sha as proof
@@ -1050,7 +1058,7 @@ def try_status_exemption(state, repo_cfg, git_cfg):
             merge_commit.parents[0]['sha'] == base_sha and
             merge_commit.parents[1]['sha'] == state.head_sha):
         # make sure we check against the github merge sha before pushing
-        return do_exemption_merge(state, repo_cfg, git_cfg, '', True,
+        return do_exemption_merge(state, logger, repo_cfg, git_cfg, '', True,
                                   "merge already tested")
 
     return False
@@ -1059,6 +1067,8 @@ def try_status_exemption(state, repo_cfg, git_cfg):
 def start_build(state, repo_cfgs, buildbot_slots, logger, db, git_cfg):
     if buildbot_slots[0]:
         return True
+
+    lazy_debug(logger, lambda: "start_build on {!r}".format(state.get_repo()))
 
     assert state.head_sha == state.get_repo().pull_request(state.num).head.sha
 
@@ -1100,15 +1110,18 @@ def start_build(state, repo_cfgs, buildbot_slots, logger, db, git_cfg):
     if len(builders) is 0:
         raise RuntimeError('Invalid configuration')
 
+    lazy_debug(logger, lambda: "start_build: builders={!r}".format(builders))
+
     if (only_status_builders and state.approved_by and
             repo_cfg.get('status_based_exemption', False)):
         if can_try_travis_exemption:
-            if try_travis_exemption(state, repo_cfg, git_cfg):
+            if try_travis_exemption(state, logger, repo_cfg, git_cfg):
                 return True
-        if try_status_exemption(state, repo_cfg, git_cfg):
+        if try_status_exemption(state, logger, repo_cfg, git_cfg):
             return True
 
-    merge_sha = create_merge(state, repo_cfg, branch, git_cfg)
+    merge_sha = create_merge(state, repo_cfg, branch, logger, git_cfg)
+    lazy_debug(logger, lambda: "start_build: merge_sha={}".format(merge_sha))
     if not merge_sha:
         return False
 
@@ -1238,6 +1251,8 @@ def process_queue(states, repos, repo_cfgs, logger, buildbot_slots, db,
         repo_states = sorted(states[repo_label].values())
 
         for state in repo_states:
+            lazy_debug(logger, lambda: "process_queue: state={!r}, building {}"
+                       .format(state, repo_label))
             if state.priority < repo.treeclosed:
                 continue
             if state.status == 'pending' and not state.try_:
