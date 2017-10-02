@@ -22,7 +22,12 @@ def github_set_ref(repo, ref, sha, *, force=False, auto_create=True, retry=1):
                 raise e
         elif e.code == 422 and retry > 0:
             time.sleep(5)
-            return github_set_ref(repo, ref, sha, force=force, auto_create=auto_create, retry=retry - 1)
+            return github_set_ref(repo,
+                                  ref,
+                                  sha,
+                                  force=force,
+                                  auto_create=auto_create,
+                                  retry=retry - 1)
         else:
             raise
 
