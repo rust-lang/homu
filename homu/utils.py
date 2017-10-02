@@ -8,7 +8,7 @@ import requests
 import time
 
 
-def github_set_ref(repo, ref, sha, *, force=False, auto_create=True):
+def github_set_ref(repo, ref, sha, *, force=False, auto_create=True, retry=1):
     url = repo._build_url('git', 'refs', ref, base_url=repo._api)
     data = {'sha': sha, 'force': force}
 
@@ -20,6 +20,14 @@ def github_set_ref(repo, ref, sha, *, force=False, auto_create=True):
                 return repo.create_ref('refs/' + ref, sha)
             except github3.models.GitHubError:
                 raise e
+        elif e.code == 422 and retry > 0:
+            time.sleep(5)
+            return github_set_ref(repo,
+                                  ref,
+                                  sha,
+                                  force=force,
+                                  auto_create=auto_create,
+                                  retry=retry - 1)
         else:
             raise
 
