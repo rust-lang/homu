@@ -371,7 +371,7 @@ def verify_auth(username, repo_cfg, state, auth, realtime, my_username):
                 else:
                     reply += 'Not in reviewers'
             elif auth == AuthState.TRY:
-                reply += 'and not in try users'
+                reply += 'not in try users'
             state.add_comment(reply)
         return False
 
