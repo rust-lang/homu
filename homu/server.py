@@ -695,7 +695,7 @@ def synch_all():
             synchronize(repo_label, g.repo_cfgs[repo_label], g.logger, g.gh,
                         g.states, g.repos, g.db, g.mergeable_que,
                         g.my_username, g.repo_labels)
-        except:
+        except Exception:
             print('* Error while synchronizing {}'.format(repo_label))
             traceback.print_exc()
             raise

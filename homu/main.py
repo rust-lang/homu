@@ -1303,7 +1303,7 @@ def fetch_mergeability(mergeable_que):
 
             state.set_mergeable(mergeable, que=False)
 
-        except:
+        except Exception:
             print('* Error while fetching mergeability')
             traceback.print_exc()
 
@@ -1336,7 +1336,7 @@ def check_timeout(states, queue_handler):
 
                         queue_handler()
 
-        except:
+        except Exception:
             print('* Error while checking timeout')
             traceback.print_exc()
 
