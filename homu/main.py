@@ -477,20 +477,16 @@ def parse_commands(body, username, repo_cfg, state, my_username, db, states,
 
                 state.add_comment('\n'.join(lines))
 
-            if sha_cmp(cur_sha, state.head_sha):
-                state.approved_by = approver
-                state.try_ = False
-                state.set_status('')
-
-                state.save()
-            elif realtime and username != my_username:
-                if cur_sha:
+            valid_merge_state = sha_cmp(cur_sha, state.head_sha)
+            if realtime and username != my_username:
+                if cur_sha and not valid_merge_state:
                     msg = '`{}` is not a valid commit SHA.'.format(cur_sha)
                     state.add_comment(
                         ':scream_cat: {} Please try again with `{:.7}`.'
                         .format(msg, state.head_sha)
                     )
                 else:
+                    valid_merge_state = True
                     state.add_comment(
                         ':pushpin: Commit {:.7} has been approved by `{}`\n\n<!-- @{} r={} {} -->'  # noqa
                         .format(
@@ -506,6 +502,13 @@ def parse_commands(body, username, repo_cfg, state, my_username, db, states,
                             ':evergreen_tree: The tree is currently closed for pull requests below priority {}, this pull request will be tested once the tree is reopened'  # noqa
                             .format(treeclosed)
                         )
+
+            if valid_merge_state
+                state.approved_by = approver
+                state.try_ = False
+                state.set_status('')
+
+                state.save()
 
         elif word == 'r-':
             if not verify_auth(username, repo_cfg, state, AuthState.REVIEWER,
