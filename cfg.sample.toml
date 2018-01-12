@@ -96,6 +96,28 @@ try_users = []
 # Arbitrary secret. You can generate one with: openssl rand -hex 20
 secret = ""
 
+# Remove and add GitHub labels when some event happened.
+# See servo/homu#141 for detail.
+#
+#[repo.NAME.labels.approved]    # after homu received `r+`
+#[repo.NAME.labels.rejected]    # after homu received `r-`
+#[repo.NAME.labels.conflict]    # a merge conflict is detected
+#[repo.NAME.labels.succeed]     # test successful
+#[repo.NAME.labels.failed]      # test failed
+#[repo.NAME.labels.exempted]    # test exempted
+#[repo.NAME.labels.timed_out]   # test timed out (after 10 hours)
+#[repo.NAME.labels.interrupted] # test interrupted (buildbot only)
+#[repo.NAME.labels.try]         # after homu received `try`
+#[repo.NAME.labels.try_succeed] # try-build successful
+#[repo.NAME.labels.try_failed]  # try-build failed
+#[repo.NAME.labels.pushed]      # user pushed a commit after `r+`/`try`
+#remove = ['list', 'of', 'labels', 'to', 'remove']
+#add = ['list', 'of', 'labels', 'to', 'add']
+#unless = [
+#   'avoid', 'relabeling', 'if',
+#   'any', 'of', 'these', 'labels', 'are', 'present',
+#]
+
 # Travis integration. Don't forget to allow Travis to test the `auto` branch!
 [repo.NAME.status.travis]
 # String label set by status updates. Don't touch this unless you really know

@@ -7,6 +7,7 @@ from .main import (
     db_query,
     INTERRUPTED_BY_HOMU_RE,
     synchronize,
+    LabelEvent,
 )
 from . import utils
 from .utils import lazy_debug
@@ -328,7 +329,9 @@ def github():
             state = PullReqState(pull_num, head_sha, '', g.db, repo_label,
                                  g.mergeable_que, g.gh,
                                  info['repository']['owner']['login'],
-                                 info['repository']['name'], g.repos)
+                                 info['repository']['name'],
+                                 repo_cfg.get('labels', {}),
+                                 g.repos)
             state.title = info['pull_request']['title']
             state.body = info['pull_request']['body']
             state.head_ref = info['pull_request']['head']['repo']['owner']['login'] + ':' + info['pull_request']['head']['ref']  # noqa
@@ -419,6 +422,8 @@ def github():
                 })
 
             if state.head_sha == info['before']:
+                if state.status:
+                    state.change_labels(LabelEvent.PUSHED)
                 state.head_advanced(info['after'])
 
                 state.save()
@@ -499,6 +504,7 @@ def report_build_res(succ, url, builder, state, logger, repo_cfg):
                            ).format(state.approved_by, state.merge_sha,
                                     state.base_ref)
                 state.add_comment(comment)
+                state.change_labels(LabelEvent.SUCCEED)
                 try:
                     try:
                         utils.github_set_ref(state.get_repo(), 'heads/' +
@@ -529,6 +535,7 @@ def report_build_res(succ, url, builder, state, logger, repo_cfg):
                            'State: approved={} try={}'
                            ).format(state.approved_by, state.try_)
                 state.add_comment(comment)
+                state.change_labels(LabelEvent.TRY_SUCCEED)
 
     else:
         if state.status == 'pending':
@@ -540,6 +547,8 @@ def report_build_res(succ, url, builder, state, logger, repo_cfg):
             state.add_comment(':broken_heart: {} - [{}]({})'.format(desc,
                                                                     builder,
                                                                     url))
+            event = LabelEvent.TRY_FAILED if state.try_ else LabelEvent.FAILED
+            state.change_labels(event)
 
     g.queue_handler()
 
@@ -625,6 +634,7 @@ def buildbot():
                                 desc = (':snowman: The build was interrupted '
                                         'to prioritize another pull request.')
                                 state.add_comment(desc)
+                                state.change_labels(LabelEvent.INTERRUPTED)
                                 utils.github_create_status(state.get_repo(),
                                                            state.head_sha,
                                                            'error', url,
