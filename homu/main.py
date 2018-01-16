@@ -34,7 +34,7 @@ STATUS_TO_PRIORITY = {
 
 INTERRUPTED_BY_HOMU_FMT = 'Interrupted by Homu ({})'
 INTERRUPTED_BY_HOMU_RE = re.compile(r'Interrupted by Homu \((.+?)\)')
-TEST_TIMEOUT = 3600 * 10
+DEFAULT_TEST_TIMEOUT = 3600 * 10
 
 global_cfg = {}
 
@@ -1168,7 +1168,8 @@ def start_build(state, repo_cfgs, buildbot_slots, logger, db, git_cfg):
         branch,
         state.merge_sha))
 
-    state.start_testing(TEST_TIMEOUT)
+    timeout = repo_cfg.get('timeout', DEFAULT_TEST_TIMEOUT)
+    state.start_testing(timeout)
 
     desc = '{} commit {} with merge {}...'.format(
         'Trying' if state.try_ else 'Testing',
@@ -1244,7 +1245,8 @@ def start_rebuild(state, repo_cfgs):
                 state.add_comment(':bomb: Failed to start rebuilding: `{}`'.format(err))  # noqa
                 return False
 
-    state.start_testing(TEST_TIMEOUT)
+    timeout = repo_cfg.get('timeout', DEFAULT_TEST_TIMEOUT)
+    state.start_testing(timeout)
 
     msg_1 = 'Previous build results'
     msg_2 = ' for {}'.format(', '.join('[{}]({})'.format(builder, url) for builder, url in succ_builders))  # noqa
