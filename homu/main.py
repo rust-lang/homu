@@ -7,7 +7,7 @@ import functools
 from . import utils
 from .utils import lazy_debug
 import logging
-from threading import Thread, Lock
+from threading import Thread, Lock, Timer
 import time
 import traceback
 import sqlite3
@@ -128,7 +128,8 @@ class PullReqState:
         self.owner = owner
         self.name = name
         self.repos = repos
-        self.test_started = time.time()  # FIXME: Save in the local database
+        self.timeout_timer = None
+        self.test_started = time.time()
 
     def head_advanced(self, head_sha, *, use_db=True):
         self.head_sha = head_sha
@@ -179,6 +180,9 @@ class PullReqState:
 
     def set_status(self, status):
         self.status = status
+        if self.timeout_timer:
+            self.timeout_timer.cancel()
+            self.timeout_timer = None
 
         db_query(
             self.db,
@@ -319,6 +323,30 @@ class PullReqState:
     def blocked_by_closed_tree(self):
         treeclosed = self.repos[self.repo_label].treeclosed
         return treeclosed if self.priority < treeclosed else None
+
+    def start_testing(self, timeout):
+        self.test_started = time.time()     # FIXME: Save in the local database
+        self.set_status('pending')
+        timer = Timer(timeout, self.timed_out)
+        timer.start()
+        self.timeout_timer = timer
+
+    def timed_out(self):
+        print('* Test timed out: {}'.format(self))
+
+        self.merge_sha = ''
+        self.save()
+        self.set_status('failure')
+
+        desc = 'Test timed out'
+        utils.github_create_status(
+            self.get_repo(),
+            self.head_sha,
+            'failure',
+            '',
+            desc,
+            context='homu')
+        self.add_comment(':boom: {}'.format(desc))
 
 
 def sha_cmp(short, full):
@@ -1140,8 +1168,7 @@ def start_build(state, repo_cfgs, buildbot_slots, logger, db, git_cfg):
         branch,
         state.merge_sha))
 
-    state.test_started = time.time()
-    state.set_status('pending')
+    state.start_testing(TEST_TIMEOUT)
 
     desc = '{} commit {} with merge {}...'.format(
         'Trying' if state.try_ else 'Testing',
@@ -1217,8 +1244,7 @@ def start_rebuild(state, repo_cfgs):
                 state.add_comment(':bomb: Failed to start rebuilding: `{}`'.format(err))  # noqa
                 return False
 
-    state.test_started = time.time()
-    state.set_status('pending')
+    state.start_testing(TEST_TIMEOUT)
 
     msg_1 = 'Previous build results'
     msg_2 = ' for {}'.format(', '.join('[{}]({})'.format(builder, url) for builder, url in succ_builders))  # noqa
@@ -1324,39 +1350,6 @@ def fetch_mergeability(mergeable_que):
 
         finally:
             mergeable_que.task_done()
-
-
-def check_timeout(states, queue_handler):
-    while True:
-        try:
-            for repo_label, repo_states in states.items():
-                for num, state in repo_states.items():
-                    _timout = time.time() - state.test_started >= TEST_TIMEOUT
-                    if state.status == 'pending' and _timout:
-                        print('* Test timed out: {}'.format(state))
-
-                        state.merge_sha = ''
-                        state.save()
-                        state.set_status('failure')
-
-                        desc = 'Test timed out'
-                        utils.github_create_status(
-                            state.get_repo(),
-                            state.head_sha,
-                            'failure',
-                            '',
-                            desc,
-                            context='homu')
-                        state.add_comment(':boom: {}'.format(desc))
-
-                        queue_handler()
-
-        except Exception:
-            print('* Error while checking timeout')
-            traceback.print_exc()
-
-        finally:
-            time.sleep(3600)
 
 
 def synchronize(repo_label, repo_cfg, logger, gh, states, repos, db, mergeable_que, my_username, repo_labels):  # noqa
@@ -1666,7 +1659,6 @@ def main():
         ]).start()
 
     Thread(target=fetch_mergeability, args=[mergeable_que]).start()
-    Thread(target=check_timeout, args=[states, queue_handler]).start()
 
     queue_handler()
 
