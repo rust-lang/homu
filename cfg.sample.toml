@@ -80,6 +80,10 @@ try_users = []
 # command.
 #status_based_exemption = false
 
+# Maximum test duration allowed for testing a PR in this repository.
+# Default to 10 hours.
+#timeout = 36000
+
 # Branch names. These settings are the defaults; it makes sense to leave these
 # as-is.
 #[repo.NAME.branch]
