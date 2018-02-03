@@ -17,7 +17,7 @@ from itertools import chain
 from queue import Queue
 import os
 import sys
-from enum import IntEnum
+from enum import IntEnum, Enum
 import subprocess
 from .git_helper import SSH_KEY_FILE
 import shlex
@@ -115,7 +115,7 @@ class PullReqState:
     delegate = ''
 
     def __init__(self, num, head_sha, status, db, repo_label, mergeable_que,
-                 gh, owner, name, repos):
+                 gh, owner, name, label_events, repos):
         self.head_advanced('', use_db=False)
 
         self.num = num
@@ -130,6 +130,7 @@ class PullReqState:
         self.repos = repos
         self.timeout_timer = None
         self.test_started = time.time()
+        self.label_events = label_events
 
     def head_advanced(self, head_sha, *, use_db=True):
         self.head_sha = head_sha
@@ -177,6 +178,21 @@ class PullReqState:
 
     def add_comment(self, text):
         self.get_issue().create_comment(text)
+
+    def change_labels(self, event):
+        event = self.label_events.get(event.value, {})
+        removes = event.get('remove', [])
+        adds = event.get('add', [])
+        unless = event.get('unless', [])
+        if not removes and not adds:
+            return
+
+        issue = self.get_issue()
+        labels = {label.name for label in issue.iter_labels()}
+        if labels.isdisjoint(unless):
+            labels.difference_update(removes)
+            labels.update(adds)
+            issue.replace_labels(list(labels))
 
     def set_status(self, status):
         self.status = status
@@ -347,6 +363,7 @@ class PullReqState:
             desc,
             context='homu')
         self.add_comment(':boom: {}'.format(desc))
+        self.change_labels(LabelEvent.TIMED_OUT)
 
 
 def sha_cmp(short, full):
@@ -362,6 +379,21 @@ class AuthState(IntEnum):
     REVIEWER = 3
     TRY = 2
     NONE = 1
+
+
+class LabelEvent(Enum):
+    APPROVED = 'approved'
+    REJECTED = 'rejected'
+    CONFLICT = 'conflict'
+    SUCCEED = 'succeed'
+    FAILED = 'failed'
+    TRY = 'try'
+    TRY_SUCCEED = 'try_succeed'
+    TRY_FAILED = 'try_failed'
+    EXEMPTED = 'exempted'
+    TIMED_OUT = 'timed_out'
+    INTERRUPTED = 'interrupted'
+    PUSHED = 'pushed'
 
 
 def verify_auth(username, repo_cfg, state, auth, realtime, my_username):
@@ -534,6 +566,7 @@ def parse_commands(body, username, repo_cfg, state, my_username, db, states,
                             ':evergreen_tree: The tree is currently closed for pull requests below priority {}, this pull request will be tested once the tree is reopened'  # noqa
                             .format(treeclosed)
                         )
+                    state.change_labels(LabelEvent.APPROVED)
 
         elif word == 'r-':
             if not verify_auth(username, repo_cfg, state, AuthState.REVIEWER,
@@ -541,8 +574,9 @@ def parse_commands(body, username, repo_cfg, state, my_username, db, states,
                 continue
 
             state.approved_by = ''
-
             state.save()
+            if realtime:
+                state.change_labels(LabelEvent.REJECTED)
 
         elif word.startswith('p='):
             if not verify_auth(username, repo_cfg, state, AuthState.TRY,
@@ -601,6 +635,9 @@ def parse_commands(body, username, repo_cfg, state, my_username, db, states,
             if not _try_auth_verified():
                 continue
             state.set_status('')
+            if realtime:
+                event = LabelEvent.TRY if state.try_ else LabelEvent.APPROVED
+                state.change_labels(event)
 
         elif word in ['try', 'try-'] and realtime:
             if not _try_auth_verified():
@@ -611,6 +648,10 @@ def parse_commands(body, username, repo_cfg, state, my_username, db, states,
             state.init_build_res([])
 
             state.save()
+            if realtime and state.try_:
+                # `try-` just resets the `try` bit and doesn't correspond to
+                # any meaningful labeling events.
+                state.change_labels(LabelEvent.TRY)
 
         elif word in ['rollup', 'rollup-']:
             if not _try_auth_verified():
@@ -924,6 +965,7 @@ def create_merge(state, repo_cfg, branch, logger, git_cfg,
         context='homu')
 
     state.add_comment(':lock: ' + desc)
+    state.change_labels(LabelEvent.CONFLICT)
 
     return ''
 
@@ -979,6 +1021,7 @@ def do_exemption_merge(state, logger, repo_cfg, git_cfg, url, check_merge,
     utils.github_create_status(state.get_repo(), state.head_sha, 'success',
                                url, desc, context='homu')
     state.add_comment(':zap: {}: {}.'.format(desc, reason))
+    state.change_labels(LabelEvent.EXEMPTED)
 
     state.merge_sha = merge_sha
     state.save()
@@ -1343,6 +1386,7 @@ def fetch_mergeability(mergeable_que):
                 state.add_comment(':umbrella: The latest upstream changes{} made this pull request unmergeable. Please resolve the merge conflicts.'.format(  # noqa
                     _blame
                 ))
+                state.change_labels(LabelEvent.CONFLICT)
 
             state.set_mergeable(mergeable, que=False)
 
@@ -1388,7 +1432,7 @@ def synchronize(repo_label, repo_cfg, logger, gh, states, repos, db, mergeable_q
                     status = info.state
                     break
 
-        state = PullReqState(pull.number, pull.head.sha, status, db, repo_label, mergeable_que, gh, repo_cfg['owner'], repo_cfg['name'], repos)  # noqa
+        state = PullReqState(pull.number, pull.head.sha, status, db, repo_label, mergeable_que, gh, repo_cfg['owner'], repo_cfg['name'], repo_cfg.get('labels', {}), repos)  # noqa
         state.title = pull.title
         state.body = pull.body
         state.head_ref = pull.head.repo[0] + ':' + pull.head.ref
@@ -1557,7 +1601,7 @@ def main():
             'SELECT num, head_sha, status, title, body, head_ref, base_ref, assignee, approved_by, priority, try_, rollup, delegate, merge_sha FROM pull WHERE repo = ?',   # noqa
             [repo_label])
         for num, head_sha, status, title, body, head_ref, base_ref, assignee, approved_by, priority, try_, rollup, delegate, merge_sha in db.fetchall():  # noqa
-            state = PullReqState(num, head_sha, status, db, repo_label, mergeable_que, gh, repo_cfg['owner'], repo_cfg['name'], repos)  # noqa
+            state = PullReqState(num, head_sha, status, db, repo_label, mergeable_que, gh, repo_cfg['owner'], repo_cfg['name'], repo_cfg.get('labels', {}), repos)  # noqa
             state.title = title
             state.body = body
             state.head_ref = head_ref
