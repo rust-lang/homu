@@ -7,8 +7,8 @@ from .main import (
     db_query,
     INTERRUPTED_BY_HOMU_RE,
     synchronize,
-    LabelEvent,
 )
+from .action import LabelEvent
 from . import utils
 from .utils import lazy_debug
 import github3
@@ -690,7 +690,7 @@ def synch(user_gh, state, repo_label, repo_cfg, repo):
     if not repo.is_collaborator(user_gh.user().login):
         abort(400, 'You are not a collaborator')
 
-    Thread(target=synchronize, args=[repo_label, repo_cfg, g.logger,
+    Thread(target=synchronize, args=[repo_label, g.cfg, repo_cfg, g.logger,
                                      g.gh, g.states, g.repos, g.db,
                                      g.mergeable_que, g.my_username,
                                      g.repo_labels]).start()
@@ -702,8 +702,8 @@ def synch_all():
     @retry(wait_exponential_multiplier=1000, wait_exponential_max=600000)
     def sync_repo(repo_label, g):
         try:
-            synchronize(repo_label, g.repo_cfgs[repo_label], g.logger, g.gh,
-                        g.states, g.repos, g.db, g.mergeable_que,
+            synchronize(repo_label, g.cfg, g.repo_cfgs[repo_label], g.logger,
+                        g.gh, g.states, g.repos, g.db, g.mergeable_que,
                         g.my_username, g.repo_labels)
         except Exception:
             print('* Error while synchronizing {}'.format(repo_label))
@@ -729,7 +729,7 @@ def admin():
         g.repo_cfgs[repo_label] = repo_cfg
         g.repo_labels[repo_cfg['owner'], repo_cfg['name']] = repo_label
 
-        Thread(target=synchronize, args=[repo_label, repo_cfg, g.logger,
+        Thread(target=synchronize, args=[repo_label, g.cfg, repo_cfg, g.logger,
                                          g.gh, g.states, g.repos, g.db,
                                          g.mergeable_que, g.my_username,
                                          g.repo_labels]).start()

@@ -4,8 +4,10 @@ import toml
 import json
 import re
 import functools
+from enum import IntEnum
 from . import utils
 from .utils import lazy_debug
+from .action import Action, LabelEvent
 import logging
 from threading import Thread, Lock, Timer
 import time
@@ -17,11 +19,9 @@ from itertools import chain
 from queue import Queue
 import os
 import sys
-from enum import IntEnum, Enum
 import subprocess
 from .git_helper import SSH_KEY_FILE
 import shlex
-import random
 
 STATUS_TO_PRIORITY = {
     'success': 0,
@@ -36,7 +36,12 @@ INTERRUPTED_BY_HOMU_FMT = 'Interrupted by Homu ({})'
 INTERRUPTED_BY_HOMU_RE = re.compile(r'Interrupted by Homu \((.+?)\)')
 DEFAULT_TEST_TIMEOUT = 3600 * 10
 
-global_cfg = {}
+
+class AuthState(IntEnum):
+    # Higher is more privileged
+    REVIEWER = 3
+    TRY = 2
+    NONE = 1
 
 
 @contextmanager
@@ -366,34 +371,8 @@ class PullReqState:
         self.change_labels(LabelEvent.TIMED_OUT)
 
 
-def sha_cmp(short, full):
-    return len(short) >= 4 and short == full[:len(short)]
-
-
 def sha_or_blank(sha):
     return sha if re.match(r'^[0-9a-f]+$', sha) else ''
-
-
-class AuthState(IntEnum):
-    # Higher is more privileged
-    REVIEWER = 3
-    TRY = 2
-    NONE = 1
-
-
-class LabelEvent(Enum):
-    APPROVED = 'approved'
-    REJECTED = 'rejected'
-    CONFLICT = 'conflict'
-    SUCCEED = 'succeed'
-    FAILED = 'failed'
-    TRY = 'try'
-    TRY_SUCCEED = 'try_succeed'
-    TRY_FAILED = 'try_failed'
-    EXEMPTED = 'exempted'
-    TIMED_OUT = 'timed_out'
-    INTERRUPTED = 'interrupted'
-    PUSHED = 'pushed'
 
 
 def verify_auth(username, repo_cfg, state, auth, realtime, my_username):
@@ -436,17 +415,12 @@ def verify_auth(username, repo_cfg, state, auth, realtime, my_username):
         return False
 
 
-PORTAL_TURRET_DIALOG = ["Target acquired", "Activated", "There you are"]
-PORTAL_TURRET_IMAGE = "https://cloud.githubusercontent.com/assets/1617736/22222924/c07b2a1c-e16d-11e6-91b3-ac659550585c.png"  # noqa
-
-
 def get_words(body, my_username):
     return list(chain.from_iterable(re.findall(r'\S+', x) for x in body.splitlines() if '@' + my_username in x))  # noqa
 
 
-def parse_commands(body, username, repo_cfg, state, my_username, db, states,
-                   *, realtime=False, sha=''):
-    global global_cfg
+def parse_commands(cfg, body, username, repo_cfg, state, my_username, db,
+                   states, *, realtime=False, sha=''):
     state_changed = False
 
     _reviewer_auth_verified = functools.partial(
@@ -469,9 +443,11 @@ def parse_commands(body, username, repo_cfg, state, my_username, db, states,
         my_username,
     )
 
+    action = Action()
+
     words = get_words(body, my_username)
     if words[1:] == ["are", "you", "still", "there?"] and realtime:
-        still_here(state)
+        action.still_here(state)
 
     # reverse the list, as usually the review status
     # is indicated at the end of the comment.
@@ -487,55 +463,55 @@ def parse_commands(body, username, repo_cfg, state, my_username, db, states,
                 cur_sha = sha
             approver = word[len('r='):] if word.startswith('r=') else username
 
-            if not review_approved(state, realtime, approver, username,
-                                   my_username, cur_sha, states):
+            if not action.review_approved(state, realtime, approver, username,
+                                          my_username, cur_sha, states):
                 continue
 
         elif word == 'r-':
             if not _reviewer_auth_verified():
                 continue
-            review_rejected(state, realtime)
+            action.review_rejected(state, realtime)
 
         elif word.startswith('p='):
             if not _try_auth_verified():
                 continue
-            if not set_priority(state, realtime, word[len('p='):], global_cfg):
+            if not action.set_priority(state, realtime, word[len('p='):], cfg):
                 continue
 
         elif word.startswith('delegate='):
             if not _reviewer_auth_verified():
                 continue
-            delegate_to(state, realtime, word[len('delegate='):])
+            action.delegate_to(state, realtime, word[len('delegate='):])
 
         elif word == 'delegate-':
             # TODO: why is this a TRY?
             if not _try_auth_verified():
                 continue
-            delegate_negative(state)
+            action.delegate_negative(state)
 
         elif word == 'delegate+':
             if not _reviewer_auth_verified():
                 continue
-            delegate_positive(state,
-                              state.get_repo().
-                              pull_request(state.num).
-                              user.login,
-                              realtime)
+            action.delegate_positive(state,
+                                     state.get_repo().
+                                     pull_request(state.num).
+                                     user.login,
+                                     realtime)
 
         elif word == 'retry' and realtime:
             if not _try_auth_verified():
                 continue
-            retry(state)
+            action.retry(state)
 
         elif word in ['try', 'try-'] and realtime:
             if not _try_auth_verified():
                 continue
-            _try(state, word)
+            action._try(state, word)
 
         elif word in ['rollup', 'rollup-']:
             if not _try_auth_verified():
                 continue
-            rollup(state, word)
+            action.rollup(state, word)
 
         elif word == 'force' and realtime:
             if not _try_auth_verified():
@@ -545,27 +521,27 @@ def parse_commands(body, username, repo_cfg, state, my_username, db, states,
         elif word == 'clean' and realtime:
             if not _try_auth_verified():
                 continue
-            clean(state)
+            action.clean(state)
 
         elif (word == 'hello?' or word == 'ping') and realtime:
-            hello_or_ping(state)
+            action.hello_or_ping(state)
 
         elif word.startswith('treeclosed='):
             if not _reviewer_auth_verified():
                 continue
-            set_treeclosed(state, word)
+            action.set_treeclosed(state, word)
 
         elif word == 'treeclosed-':
             if not _reviewer_auth_verified():
                 continue
-            treeclosed_negative(state)
+            action.treeclosed_negative(state)
 
-        elif 'hooks' in global_cfg:
+        elif 'hooks' in cfg:
             # TODO: Can't extract this code to a new function
             # because it changes the value of `found`.
             hook_found = False
-            for hook in global_cfg['hooks']:
-                hook_cfg = global_cfg['hooks'][hook]
+            for hook in cfg['hooks']:
+                hook_cfg = cfg['hooks'][hook]
                 if hook_cfg['realtime'] and not realtime:
                     continue
                 if word == hook or word.startswith('%s=' % hook):
@@ -596,35 +572,6 @@ def parse_commands(body, username, repo_cfg, state, my_username, db, states,
     return state_changed
 
 
-def get_portal_turret_dialog():
-    return random.choice(PORTAL_TURRET_DIALOG)
-
-
-def still_here(state):
-    state.add_comment(
-        ":cake: {}\n\n![]({})".format(
-            get_portal_turret_dialog(), PORTAL_TURRET_IMAGE)
-        )
-
-
-def hello_or_ping(state):
-    state.add_comment(":sleepy: I'm awake I'm awake")
-
-
-def treeclosed_negative(state):
-    state.change_treeclosed(-1)
-    state.save()
-
-
-def set_treeclosed(state, word):
-    try:
-        treeclosed = int(word[len('treeclosed='):])
-        state.change_treeclosed(treeclosed)
-    except ValueError:
-        pass
-    state.save()
-
-
 def force(repo_cfg, state):
     if 'buildbot' in repo_cfg:
         with buildbot_sess(repo_cfg) as sess:
@@ -649,175 +596,6 @@ def force(repo_cfg, state):
         state.add_comment(
             ':bomb: Buildbot returned an error: `{}`'.format(err)
         )
-
-
-def rollup(state, word):
-    state.rollup = word == 'rollup'
-    state.save()
-
-
-def _try(state, word):
-    state.try_ = word == 'try'
-    state.merge_sha = ''
-    state.init_build_res([])
-    state.save()
-    if state.try_:
-        # `try-` just resets the `try` bit and doesn't correspond to
-        # any meaningful labeling events.
-        state.change_labels(LabelEvent.TRY)
-
-
-def clean(state):
-    state.merge_sha = ''
-    state.init_build_res([])
-    state.save()
-
-
-def retry(state):
-    state.set_status('')
-    event = LabelEvent.TRY if state.try_ else LabelEvent.APPROVED
-    state.change_labels(event)
-
-
-def delegate_negative(state):
-    state.delegate = ''
-    state.save()
-
-
-def delegate_positive(state, delegate, realtime):
-    state.delegate = delegate
-    state.save()
-
-    if realtime:
-        state.add_comment(
-            ':v: @{} can now approve this pull request'
-            .format(state.delegate)
-        )
-
-
-def delegate_to(state, realtime, delegate):
-    state.delegate = delegate
-    state.save()
-
-    if realtime:
-        state.add_comment(
-            ':v: @{} can now approve this pull request'
-            .format(state.delegate)
-        )
-
-
-def set_priority(state, realtime, priority, global_cfg):
-    try:
-        pvalue = int(priority)
-    except ValueError:
-        return False
-
-    if pvalue > global_cfg['max_priority']:
-        if realtime:
-            state.add_comment(
-                ':stop_sign: Priority higher than {} is ignored.'
-                .format(global_cfg['max_priority'])
-            )
-        return False
-    state.priority = pvalue
-    state.save()
-    return True
-
-
-def review_approved(state, realtime, approver, username,
-                    my_username, sha, states):
-    # Ignore "r=me"
-    if approver == 'me':
-        return False
-
-    # Ignore WIP PRs
-    if any(map(state.title.startswith, [
-        'WIP', 'TODO', '[WIP]', '[TODO]',
-    ])):
-        if realtime:
-            state.add_comment(':clipboard: Looks like this PR is still in progress, ignoring approval')  # noqa
-        return False
-
-    # Sometimes, GitHub sends the head SHA of a PR as 0000000
-    # through the webhook. This is called a "null commit", and
-    # seems to happen when GitHub internally encounters a race
-    # condition. Last time, it happened when squashing commits
-    # in a PR. In this case, we just try to retrieve the head
-    # SHA manually.
-    if all(x == '0' for x in state.head_sha):
-        if realtime:
-            state.add_comment(
-                ':bangbang: Invalid head SHA found, retrying: `{}`'
-                .format(state.head_sha)
-            )
-
-        state.head_sha = state.get_repo().pull_request(state.num).head.sha  # noqa
-        state.save()
-
-        assert any(x != '0' for x in state.head_sha)
-
-    if state.approved_by and realtime and username != my_username:
-        for _state in states[state.repo_label].values():
-            if _state.status == 'pending':
-                break
-        else:
-            _state = None
-
-        lines = []
-
-        if state.status in ['failure', 'error']:
-            lines.append('- This pull request previously failed. You should add more commits to fix the bug, or use `retry` to trigger a build again.')  # noqa
-
-        if _state:
-            if state == _state:
-                lines.append('- This pull request is currently being tested. If there\'s no response from the continuous integration service, you may use `retry` to trigger a build again.')  # noqa
-            else:
-                lines.append('- There\'s another pull request that is currently being tested, blocking this pull request: #{}'.format(_state.num))  # noqa
-
-        if lines:
-            lines.insert(0, '')
-        lines.insert(0, ':bulb: This pull request was already approved, no need to approve it again.')  # noqa
-
-        state.add_comment('\n'.join(lines))
-
-    if sha_cmp(sha, state.head_sha):
-        state.approved_by = approver
-        state.try_ = False
-        state.set_status('')
-
-        state.save()
-    elif realtime and username != my_username:
-        if sha:
-            msg = '`{}` is not a valid commit SHA.'.format(sha)
-            state.add_comment(
-                ':scream_cat: {} Please try again with `{:.7}`.'
-                .format(msg, state.head_sha)
-            )
-        else:
-            state.add_comment(
-                ':pushpin: Commit {:.7} has been approved by `{}`\n\n<!-- @{} r={} {} -->'  # noqa
-                .format(
-                    state.head_sha,
-                    approver,
-                    my_username,
-                    approver,
-                    state.head_sha,
-            ))
-            treeclosed = state.blocked_by_closed_tree()
-            if treeclosed:
-                state.add_comment(
-                    ':evergreen_tree: The tree is currently closed for pull requests below priority {}, this pull request will be tested once the tree is reopened'  # noqa
-                    .format(treeclosed)
-                )
-            state.change_labels(LabelEvent.APPROVED)
-    return True
-
-
-def review_rejected(state, realtime):
-    state.approved_by = ''
-    state.save()
-    if realtime:
-        state.change_labels(LabelEvent.REJECTED)
 
 
 def handle_hook_response(state, hook_cfg, body, extra_data):
@@ -1471,7 +1249,7 @@ def fetch_mergeability(mergeable_que):
             mergeable_que.task_done()
 
 
-def synchronize(repo_label, repo_cfg, logger, gh, states, repos, db, mergeable_que, my_username, repo_labels):  # noqa
+def synchronize(repo_label, cfg, repo_cfg, logger, gh, states, repos, db, mergeable_que, my_username, repo_labels):  # noqa
     logger.info('Synchronizing {}...'.format(repo_label))
 
     repo = gh.repository(repo_cfg['owner'], repo_cfg['name'])
@@ -1516,6 +1294,7 @@ def synchronize(repo_label, repo_cfg, logger, gh, states, repos, db, mergeable_q
         for comment in pull.iter_comments():
             if comment.original_commit_id == pull.head.sha:
                 parse_commands(
+                    cfg,
                     comment.body,
                     comment.user.login,
                     repo_cfg,
@@ -1528,6 +1307,7 @@ def synchronize(repo_label, repo_cfg, logger, gh, states, repos, db, mergeable_q
 
         for comment in pull.iter_issue_comments():
             parse_commands(
+                cfg,
                 comment.body,
                 comment.user.login,
                 repo_cfg,
@@ -1569,7 +1349,6 @@ def arguments():
 
 
 def main():
-    global global_cfg
     args = arguments()
 
     logger = logging.getLogger('homu')
@@ -1589,7 +1368,6 @@ def main():
                 cfg = json.loads(fp.read())
         else:
             raise
-    global_cfg = cfg
 
     gh = github3.login(token=cfg['github']['access_token'])
     user = gh.user()

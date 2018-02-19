@@ -1,10 +1,8 @@
 import unittest
 from unittest.mock import patch, Mock, MagicMock, call
 from homu.main import LabelEvent
-from homu.main import get_words, still_here, hello_or_ping, \
-treeclosed_negative, sha_or_blank, sha_cmp, set_treeclosed, \
-clean, retry, delegate_negative, delegate_positive, delegate_to, \
-rollup, _try, set_priority, review_rejected, review_approved, force
+from homu.main import sha_or_blank, force, parse_commands, \
+get_words
 
 class TestMain(unittest.TestCase):
 
@@ -17,262 +15,205 @@ class TestMain(unittest.TestCase):
     def test_get_words_correct_username(self):
         self.assertEqual(get_words("@user I'm a message", 'user'), ['@user', "I'm", 'a', 'message'])
 
-    @patch('homu.main.PullReqState')
-    @patch('homu.main.get_portal_turret_dialog', return_value='message')
-    def test_still_here(self, mock_message, MockPullReqState):
-        state = MockPullReqState()
-        still_here(state)
-        state.add_comment.assert_called_once_with(':cake: message\n\n![](https://cloud.githubusercontent.com/assets/1617736/22222924/c07b2a1c-e16d-11e6-91b3-ac659550585c.png)')
-
-    @patch('homu.main.PullReqState')
-    def test_hello_or_ping(self, MockPullReqState):
-        state = MockPullReqState()
-        hello_or_ping(state)
-        state.add_comment.assert_called_once_with(":sleepy: I'm awake I'm awake")
-
-    @patch('homu.main.PullReqState')
-    def test_treeclosed_negative(self, MockPullReqState):
-        state = MockPullReqState()
-        treeclosed_negative(state)
-        state.change_treeclosed.assert_called_once_with(-1)
-        state.save.assert_called_once_with()
-
-    @patch('homu.main.PullReqState')
-    def test_set_treeclosed(self, MockPullReqState):
-        state = MockPullReqState()
-        set_treeclosed(state, 'treeclosed=123')
-        state.change_treeclosed.assert_called_once_with(123)
-        state.save.assert_called_once_with()
-
-    @patch('homu.main.PullReqState')
-    def test_rollup_positive(self, MockPullReqState):
-        state = MockPullReqState()
-        rollup(state, 'rollup')
-        self.assertTrue(state.rollup)
-        state.save.assert_called_once_with()
-
-    @patch('homu.main.PullReqState')
-    def test_rollup_negative(self, MockPullReqState):
-        state = MockPullReqState()
-        rollup(state, 'rollup-')
-        self.assertFalse(state.rollup)
-        state.save.assert_called_once_with()
-
-    @patch('homu.main.PullReqState')
-    def test_try_positive(self, MockPullReqState):
-        state = MockPullReqState()
-        _try(state, 'try')
-        self.assertTrue(state.try_)
-        state.init_build_res.assert_called_once_with([])
-        state.save.assert_called_once_with()
-        state.change_labels.assert_called_once_with(LabelEvent.TRY)
-
-    @patch('homu.main.PullReqState')
-    def test_try_negative(self, MockPullReqState):
-        state = MockPullReqState()
-        _try(state, 'try-')
-        self.assertFalse(state.try_)
-        state.init_build_res.assert_called_once_with([])
-        state.save.assert_called_once_with()
-        assert not state.change_labels.called, 'change_labels was called and should never be.'
-
-    @patch('homu.main.PullReqState')
-    def test_clean(self, MockPullReqState):
-        state = MockPullReqState()
-        clean(state)
-        self.assertEqual(state.merge_sha, '')
-        state.init_build_res.assert_called_once_with([])
-        state.save.assert_called_once_with()
-
-    @patch('homu.main.PullReqState')
-    def test_retry_try(self, MockPullReqState):
-        state = MockPullReqState()
-        state.try_ = True
-        retry(state)
-        state.set_status.assert_called_once_with('')
-        state.change_labels.assert_called_once_with(LabelEvent.TRY)
-
-    @patch('homu.main.PullReqState')
-    def test_retry_approved(self, MockPullReqState):
-        state = MockPullReqState()
-        state.try_ = False
-        retry(state)
-        state.set_status.assert_called_once_with('')
-        state.change_labels.assert_called_once_with(LabelEvent.APPROVED)
-
-    @patch('homu.main.PullReqState')
-    def test_delegate_negative(self, MockPullReqState):
-        state = MockPullReqState()
-        state.delegate = 'delegate'
-        delegate_negative(state)
-        self.assertEqual(state.delegate, '')
-        state.save.assert_called_once_with()
-
-    @patch('homu.main.PullReqState')
-    def test_delegate_positive_realtime(self, MockPullReqState):
-        state = MockPullReqState()
-        delegate_positive(state, 'delegate', True)
-        self.assertEqual(state.delegate, 'delegate')
-        state.add_comment.assert_called_once_with(':v: @delegate can now approve this pull request')
-        state.save.assert_called_once_with()
-
-    @patch('homu.main.PullReqState')
-    def test_delegate_positive_not_realtime(self, MockPullReqState):
-        state = MockPullReqState()
-        delegate_positive(state, 'delegate', False)
-        self.assertEqual(state.delegate, 'delegate')
-        state.save.assert_called_once_with()
-        assert not state.add_comment.called, 'state.save was called and should never be.'
-
-    @patch('homu.main.PullReqState')
-    def test_delegate_to(self, MockPullReqState):
-        state = MockPullReqState()
-        delegate_to(state, True, 'user')
-        self.assertEqual(state.delegate, 'user')
-        state.save.assert_called_once_with()
-        state.add_comment.assert_called_once_with(
-            ':v: @user can now approve this pull request'
-        )
-
-    @patch('homu.main.PullReqState')
-    def test_set_priority_not_priority_less_than_max_priority(self, MockPullReqState):
-        state = MockPullReqState()
-        set_priority(state, True, '1', {'max_priority': 3})
-        self.assertEqual(state.priority, 1)
-        state.save.assert_called_once_with()
-
-    @patch('homu.main.PullReqState')
-    def test_set_priority_not_priority_more_than_max_priority(self, MockPullReqState):
-        state = MockPullReqState()
-        state.priority = 2
-        self.assertFalse(set_priority(state, True, '5', {'max_priority': 3}))
-        self.assertEqual(state.priority, 2)
-        state.add_comment.assert_called_once_with(':stop_sign: Priority higher than 3 is ignored.')
-        assert not state.save.called, 'state.save was called and should never be.'
-
-    @patch('homu.main.PullReqState')
-    def test_review_approved_approver_me(self, MockPullReqState):
-        state = MockPullReqState()
-        self.assertFalse(review_approved(state, True, 'me', 'user', 'user', '', []))
-
-    @patch('homu.main.PullReqState')
-    def test_review_approved_wip_todo_realtime(self, MockPullReqState):
-        state = MockPullReqState()
-        state.title = 'WIP work in progress'
-        self.assertFalse(review_approved(state, True, 'user', 'user', 'user', '', []))
-        state.add_comment.assert_called_once_with(':clipboard: Looks like this PR is still in progress, ignoring approval')
-
-    @patch('homu.main.PullReqState')
-    def test_review_approved_wip_not_realtime(self, MockPullReqState):
-        state = MockPullReqState()
-        state.title = 'WIP work in progress'
-        self.assertFalse(review_approved(state, False, 'user', 'user', 'user', '', []))
-        assert not state.add_comment.called, 'state.add_comment was called and should never be.'
-
-    @patch('homu.main.PullReqState')
-    def test_review_approved_equal_usernames(self, MockPullReqState):
-        state = MockPullReqState()
-        state.head_sha = 'abcd123'
-        state.title = "My pull request"
-        self.assertTrue(review_approved(state, True, 'user' ,'user', 'user', 'abcd123', []))
-        self.assertEqual(state.approved_by, 'user')
-        self.assertFalse(state.try_)
-        state.set_status.assert_called_once_with('')
-        state.save.assert_called_once_with()
-
-    @patch('homu.main.PullReqState')
-    def test_review_approved_different_usernames_sha_equals_head_sha(self, MockPullReqState):
-        state = MockPullReqState()
-        state.head_sha = 'abcd123'
-        state.title = "My pull request"
-        state.repo_label = 'label'
-        state.status = 'pending'
-        states = {}
-        states[state.repo_label] = {'label': state}
-        self.assertTrue(review_approved(state, True, 'user1' ,'user1', 'user2', 'abcd123', states))
-        self.assertEqual(state.approved_by, 'user1')
-        self.assertFalse(state.try_)
-        state.set_status.assert_called_once_with('')
-        state.save.assert_called_once_with()
-        state.add_comment.assert_called_once_with(":bulb: This pull request was already approved, no need to approve it again.\n\n- This pull request is currently being tested. If there's no response from the continuous integration service, you may use `retry` to trigger a build again.")
-
-    @patch('homu.main.PullReqState')
-    def test_review_approved_different_usernames_sha_different_head_sha(self, MockPullReqState):
-        state = MockPullReqState()
-        state.head_sha = 'sdf456'
-        state.title = "My pull request"
-        state.repo_label = 'label'
-        state.status = 'pending'
-        state.num = 1
-        states = {}
-        states[state.repo_label] = {'label': state}
-        self.assertTrue(review_approved(state, True, 'user1', 'user1', 'user2', 'abcd123', states))
-        state.add_comment.assert_has_calls([call(":bulb: This pull request was already approved, no need to approve it again.\n\n- This pull request is currently being tested. If there's no response from the continuous integration service, you may use `retry` to trigger a build again."),
-                                            call(':scream_cat: `abcd123` is not a valid commit SHA. Please try again with `sdf456`.')])
-
-    @patch('homu.main.PullReqState')
-    def test_review_approved_different_usernames_blank_sha_not_blocked_by_closed_tree(self, MockPullReqState):
-        state = MockPullReqState()
-        state.blocked_by_closed_tree.return_value = 0
-        state.head_sha = 'sdf456'
-        state.title = "My pull request"
-        state.repo_label = 'label'
-        state.status = 'pending'
-        states = {}
-        states[state.repo_label] = {'label': state}
-        self.assertTrue(review_approved(state, True, 'user1', 'user1', 'user2', '', states))
-        state.add_comment.assert_has_calls([call(":bulb: This pull request was already approved, no need to approve it again.\n\n- This pull request is currently being tested. If there's no response from the continuous integration service, you may use `retry` to trigger a build again."),
-                                            call(':pushpin: Commit sdf456 has been approved by `user1`\n\n<!-- @user2 r=user1 sdf456 -->')])
-
-    @patch('homu.main.PullReqState')
-    def test_review_approved_different_usernames_blank_sha_blocked_by_closed_tree(self, MockPullReqState):
-        state = MockPullReqState()
-        state.blocked_by_closed_tree.return_value = 1
-        state.head_sha = 'sdf456'
-        state.title = "My pull request"
-        state.repo_label = 'label'
-        state.status = 'pending'
-        states = {}
-        states[state.repo_label] = {'label': state}
-        self.assertTrue(review_approved(state, True, 'user1', 'user1', 'user2', '', states))
-        state.add_comment.assert_has_calls([call(":bulb: This pull request was already approved, no need to approve it again.\n\n- This pull request is currently being tested. If there's no response from the continuous integration service, you may use `retry` to trigger a build again."),
-                                            call(':pushpin: Commit sdf456 has been approved by `user1`\n\n<!-- @user2 r=user1 sdf456 -->'),
-                                            call(':evergreen_tree: The tree is currently closed for pull requests below priority 1, this pull request will be tested once the tree is reopened')])
-        state.change_labels.assert_called_once_with(LabelEvent.APPROVED)
-
-    @patch('homu.main.PullReqState')
-    def test_review_approved_same_usernames_sha_different_head_sha(self, MockPullReqState):
-        state = MockPullReqState()
-        state.head_sha = 'sdf456'
-        state.title = "My pull request"
-        state.repo_label = 'label'
-        state.status = 'pending'
-        states = {}
-        states[state.repo_label] = {'label': state}
-        self.assertTrue(review_approved(state, True, 'user', 'user', 'user', 'abcd123', states))
-
-    @patch('homu.main.PullReqState')
-    def test_review_rejected(self, MockPullReqState):
-        state = MockPullReqState()
-        review_rejected(state, True)
-        self.assertEqual(state.approved_by, '')
-        state.save.assert_called_once_with()
-        state.change_labels.assert_called_once_with(LabelEvent.REJECTED)
-
     def test_sha_or_blank_return_sha(self):
         self.assertEqual(sha_or_blank('f5d42200481'), 'f5d42200481')
 
     def test_sha_or_blank_return_blank(self):
         self.assertEqual(sha_or_blank('f5d@12'), '')
 
-    def test_sha_cmp_equal(self):
-        self.assertTrue(sha_cmp('f259660', 'f259660b128ae59133dff123998ee9b643aff050'))
+    @patch('homu.main.get_words', return_value=["@bot", "are", "you", "still", "there?"])
+    @patch('homu.main.verify_auth', return_value=True)
+    @patch('homu.main.PullReqState')
+    @patch('homu.action.Action.still_here')
+    def test_parse_commands_still_here_realtime(self, mock_still_here, MockPullReqState, mock_auth, mock_words):
+        state = MockPullReqState()
+        self.assertFalse(parse_commands({}, '', '', {}, state, '', '', [], realtime=True))
+        mock_still_here.assert_called_once_with(state)
 
-    def test_sha_cmp_not_equal(self):
-        self.assertFalse(sha_cmp('aaabbb12', 'f259660b128ae59133dff123998ee9b643aff050'))
 
-    def test_sha_cmp_short_lenght(self):
-        self.assertFalse(sha_cmp('f25', 'f259660b128ae59133dff123998ee9b643aff050'))
+    @patch('homu.main.get_words', return_value=["@bot", "are", "you", "still", "there?"])
+    @patch('homu.main.verify_auth', return_value=True)
+    @patch('homu.main.PullReqState')
+    @patch('homu.action.Action.still_here')
+    def test_parse_commands_still_here_not_realtime(self, mock_still_here, MockPullReqState, mock_auth, mock_words):
+        state = MockPullReqState()
+        self.assertFalse(parse_commands({}, '', '', {}, state, '', '', []))
+        assert not mock_still_here.called, 'still_here was called and should never be.'
+
+
+    @patch('homu.main.get_words', return_value=["approved", "r+"])
+    @patch('homu.main.verify_auth', return_value=True)
+    @patch('homu.main.PullReqState')
+    @patch('homu.action.Action.review_approved')
+    def test_parse_commands_review_approved_verified(self, mock_review_approved, MockPullReqState, mock_auth, mock_words):
+        state = MockPullReqState()
+        self.assertTrue(parse_commands({}, '', 'user', {}, state, 'my_user', '', [], sha='abc123'))
+        mock_review_approved.assert_called_once_with(state, False, 'user', 'user', 'my_user', 'abc123', [])
+
+    @patch('homu.main.get_words', return_value=["approved", "r+"])
+    @patch('homu.main.verify_auth', return_value=False)
+    @patch('homu.main.PullReqState')
+    @patch('homu.action.Action.review_approved')
+    def test_parse_commands_review_approved_not_verified(self, mock_review_approved, MockPullReqState, mock_auth, mock_words):
+        state = MockPullReqState()
+        self.assertFalse(parse_commands({}, '', 'user', {}, state, 'my_user', '', [], sha='abc123'))
+        assert not mock_review_approved.called, 'mock_review_approved was called and should never be.'
+
+    @patch('homu.main.get_words', return_value=["approved", "r=user2"])
+    @patch('homu.main.verify_auth', return_value=True)
+    @patch('homu.main.PullReqState')
+    @patch('homu.action.Action.review_approved')
+    def test_parse_commands_review_approved_verified_different_approver(self, mock_review_approved, MockPullReqState, mock_auth, mock_words):
+        state = MockPullReqState()
+        self.assertTrue(parse_commands({}, '', 'user', {}, state, 'my_user', '', [], sha='abc123'))
+        mock_review_approved.assert_called_once_with(state, False, 'user2', 'user', 'my_user', 'abc123', [])
+
+    @patch('homu.main.get_words', return_value=["nope", "r-"])
+    @patch('homu.main.verify_auth', return_value=True)
+    @patch('homu.main.PullReqState')
+    @patch('homu.action.Action.review_rejected')
+    def test_parse_commands_review_rejected(self, mock_review_rejected, MockPullReqState, mock_auth, mock_words):
+        state = MockPullReqState()
+        self.assertTrue(parse_commands({}, '', 'user', {}, state, 'my_user', '', [], sha='abc123'))
+        mock_review_rejected.assert_called_once_with(state, False)
+
+    @patch('homu.main.get_words', return_value=["priority", "p=1"])
+    @patch('homu.main.verify_auth', return_value=True)
+    @patch('homu.main.PullReqState')
+    @patch('homu.action.Action.set_priority')
+    def test_parse_commands_set_priority(self, mock_set_priority, MockPullReqState, mock_auth, mock_words):
+        state = MockPullReqState()
+        self.assertTrue(parse_commands({}, '', 'user', {}, state, 'my_user', '', [], sha='abc123'))
+        mock_set_priority.assert_called_once_with(state, False, '1', {})
+
+    @patch('homu.main.get_words', return_value=["priority", "delegate=user2"])
+    @patch('homu.main.verify_auth', return_value=True)
+    @patch('homu.main.PullReqState')
+    @patch('homu.action.Action.delegate_to')
+    def test_parse_commands_delegate_to(self, mock_delegate_to, MockPullReqState, mock_auth, mock_words):
+        state = MockPullReqState()
+        self.assertTrue(parse_commands({}, '', 'user', {}, state, 'my_user', '', [], sha='abc123'))
+        mock_delegate_to.assert_called_once_with(state, False, 'user2')
+
+    @patch('homu.main.get_words', return_value=["delegate negative", "delegate-"])
+    @patch('homu.main.verify_auth', return_value=True)
+    @patch('homu.main.PullReqState')
+    @patch('homu.action.Action.delegate_negative')
+    def test_parse_commands_delegate_negative(self, mock_delegate_negative, MockPullReqState, mock_auth, mock_words):
+        state = MockPullReqState()
+        self.assertTrue(parse_commands({}, '', 'user', {}, state, 'my_user', '', [], sha='abc123'))
+        mock_delegate_negative.assert_called_once_with(state)
+
+    @patch('homu.main.get_words', return_value=["delegate positive", "delegate+"])
+    @patch('homu.main.verify_auth', return_value=True)
+    @patch('homu.main.PullReqState')
+    @patch('homu.action.Action.delegate_positive')
+    def test_parse_commands_delegate_positive(self, mock_delegate_positive, MockPullReqState, mock_auth, mock_words):
+        state = MockPullReqState()
+        state.num = 2
+        state.get_repo().pull_request(state.num).user.login = 'delegate'
+        self.assertTrue(parse_commands({}, '', 'user', {}, state, 'my_user', '', [], sha='abc123'))
+        mock_delegate_positive.assert_called_once_with(state, 'delegate', False)
+
+    @patch('homu.main.get_words', return_value=["retry"])
+    @patch('homu.main.verify_auth', return_value=True)
+    @patch('homu.main.PullReqState')
+    @patch('homu.action.Action.retry')
+    def test_parse_commands_retry_realtime(self, mock_retry, MockPullReqState, mock_auth, mock_words):
+        state = MockPullReqState()
+        self.assertTrue(parse_commands({}, '', 'user', {}, state, 'my_user', '', [], realtime=True, sha='abc123'))
+        mock_retry.assert_called_once_with(state)
+
+    @patch('homu.main.get_words', return_value=["retry"])
+    @patch('homu.main.verify_auth', return_value=True)
+    @patch('homu.main.PullReqState')
+    @patch('homu.action.Action.retry')
+    def test_parse_commands_retry_not_realtime(self, mock_retry, MockPullReqState, mock_auth, mock_words):
+        state = MockPullReqState()
+        self.assertFalse(parse_commands({}, '', 'user', {}, state, 'my_user', '', [], sha='abc123'))
+        assert not mock_retry.called, 'retry was called and should never be.'
+
+    @patch('homu.main.get_words', return_value=["try"])
+    @patch('homu.main.verify_auth', return_value=True)
+    @patch('homu.main.PullReqState')
+    @patch('homu.action.Action._try')
+    def test_parse_commands_try_realtime(self, mock_try, MockPullReqState, mock_auth, mock_words):
+        state = MockPullReqState()
+        self.assertTrue(parse_commands({}, '', 'user', {}, state, 'my_user', '', [], sha='abc123', realtime=True))
+        mock_try.assert_called_once_with(state, 'try')
+
+    @patch('homu.main.get_words', return_value=["try"])
+    @patch('homu.main.verify_auth', return_value=True)
+    @patch('homu.main.PullReqState')
+    @patch('homu.action.Action._try')
+    def test_parse_commands_try_not_realtime(self, mock_try, MockPullReqState, mock_auth, mock_words):
+        state = MockPullReqState()
+        self.assertFalse(parse_commands({}, '', 'user', {}, state, 'my_user', '', [], sha='abc123'))
+        assert not mock_try.called, '_try was called and should never be.'
+
+    @patch('homu.main.get_words', return_value=["rollup"])
+    @patch('homu.main.verify_auth', return_value=True)
+    @patch('homu.main.PullReqState')
+    @patch('homu.action.Action.rollup')
+    def test_parse_commands_rollup(self, mock_rollup, MockPullReqState, mock_auth, mock_words):
+        state = MockPullReqState()
+        self.assertTrue(parse_commands({}, '', 'user', {}, state, 'my_user', '', [], sha='abc123', realtime=True))
+        mock_rollup.assert_called_once_with(state, 'rollup')
+
+    @patch('homu.main.get_words', return_value=["clean"])
+    @patch('homu.main.verify_auth', return_value=True)
+    @patch('homu.main.PullReqState')
+    @patch('homu.action.Action.clean')
+    def test_parse_commands_clean_realtime(self, mock_clean, MockPullReqState, mock_auth, mock_words):
+        state = MockPullReqState()
+        self.assertTrue(parse_commands({}, '', 'user', {}, state, 'my_user', '', [], sha='abc123', realtime=True))
+        mock_clean.assert_called_once_with(state)
+
+    @patch('homu.main.get_words', return_value=["clean"])
+    @patch('homu.main.verify_auth', return_value=True)
+    @patch('homu.main.PullReqState')
+    @patch('homu.action.Action.clean')
+    def test_parse_commands_clean_not_realtime(self, mock_clean, MockPullReqState, mock_auth, mock_words):
+        state = MockPullReqState()
+        self.assertFalse(parse_commands({}, '', 'user', {}, state, 'my_user', '', [], sha='abc123'))
+        assert not mock_clean.called, 'clean was called and should never be.'
+
+    @patch('homu.main.get_words', return_value=["hello?"])
+    @patch('homu.main.verify_auth', return_value=True)
+    @patch('homu.main.PullReqState')
+    @patch('homu.action.Action.hello_or_ping')
+    def test_parse_commands_hello_or_ping_realtime(self, mock_hello_or_ping, MockPullReqState, mock_auth, mock_words):
+        state = MockPullReqState()
+        self.assertTrue(parse_commands({}, '', 'user', {}, state, 'my_user', '', [], sha='abc123', realtime=True))
+        mock_hello_or_ping.assert_called_once_with(state)
+
+    @patch('homu.main.get_words', return_value=["hello?"])
+    @patch('homu.main.verify_auth', return_value=True)
+    @patch('homu.main.PullReqState')
+    @patch('homu.action.Action.hello_or_ping')
+    def test_parse_commands_hello_or_ping_not_realtime(self, mock_hello_or_ping, MockPullReqState, mock_auth, mock_words):
+        state = MockPullReqState()
+        self.assertFalse(parse_commands({}, '', 'user', {}, state, 'my_user', '', [], sha='abc123'))
+        assert not mock_hello_or_ping.called, 'hello_or_ping was called and should never be.'
+
+    @patch('homu.main.get_words', return_value=["treeclosed=1"])
+    @patch('homu.main.verify_auth', return_value=True)
+    @patch('homu.main.PullReqState')
+    @patch('homu.action.Action.set_treeclosed')
+    def test_parse_commands_set_treeclosed(self, mock_set_treeclosed, MockPullReqState, mock_auth, mock_words):
+        state = MockPullReqState()
+        self.assertTrue(parse_commands({}, '', 'user', {}, state, 'my_user', '', [], sha='abc123', realtime=True))
+        mock_set_treeclosed.assert_called_once_with(state, 'treeclosed=1')
+
+    @patch('homu.main.get_words', return_value=["treeclosed-"])
+    @patch('homu.main.verify_auth', return_value=True)
+    @patch('homu.main.PullReqState')
+    @patch('homu.action.Action.treeclosed_negative')
+    def test_parse_commands_treeclosed_negative(self, mock_treeclosed_negative, MockPullReqState, mock_auth, mock_words):
+        state = MockPullReqState()
+        self.assertTrue(parse_commands({}, '', 'user', {}, state, 'my_user', '', [], sha='abc123', realtime=True))
+        mock_treeclosed_negative.assert_called_once_with(state)
+
 
 if __name__ == '__main__':
     unittest.main()
