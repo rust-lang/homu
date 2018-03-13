@@ -3,7 +3,6 @@ import github3
 import toml
 import json
 import re
-import functools
 from . import utils
 from .utils import lazy_debug
 import logging
