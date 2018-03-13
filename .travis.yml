@@ -8,5 +8,7 @@ install:
   - pip install flake8
 script:
   - flake8 homu
+  - python setup.py install
+  - python -m unittest discover tests
 notifications:
   webhooks: http://build.servo.org:54856/travis
