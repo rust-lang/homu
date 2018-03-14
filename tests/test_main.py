@@ -18,10 +18,11 @@ class TestMain(unittest.TestCase):
         self.assertEqual(get_words("@user I'm a message", 'user'), ['@user', "I'm", 'a', 'message'])
 
     @patch('homu.main.PullReqState')
-    def test_still_here(self, MockPullReqState):
+    @patch('homu.main.get_portal_turret_dialog', return_value='message')
+    def test_still_here(self, mock_message, MockPullReqState):
         state = MockPullReqState()
         still_here(state)
-        state.add_comment.assert_called_once()
+        state.add_comment.assert_called_once_with(':cake: message\n\n![](https://cloud.githubusercontent.com/assets/1617736/22222924/c07b2a1c-e16d-11e6-91b3-ac659550585c.png)')
 
     @patch('homu.main.PullReqState')
     def test_hello_or_ping(self, MockPullReqState):
@@ -34,28 +35,28 @@ class TestMain(unittest.TestCase):
         state = MockPullReqState()
         treeclosed_negative(state)
         state.change_treeclosed.assert_called_once_with(-1)
-        state.save.assert_called_once()
+        state.save.assert_called_once_with()
 
     @patch('homu.main.PullReqState')
     def test_set_treeclosed(self, MockPullReqState):
         state = MockPullReqState()
         set_treeclosed(state, 'treeclosed=123')
         state.change_treeclosed.assert_called_once_with(123)
-        state.save.assert_called_once()
+        state.save.assert_called_once_with()
 
     @patch('homu.main.PullReqState')
     def test_rollup_positive(self, MockPullReqState):
         state = MockPullReqState()
         rollup(state, 'rollup')
         self.assertTrue(state.rollup)
-        state.save.assert_called_once()
+        state.save.assert_called_once_with()
 
     @patch('homu.main.PullReqState')
     def test_rollup_negative(self, MockPullReqState):
         state = MockPullReqState()
         rollup(state, 'rollup-')
         self.assertFalse(state.rollup)
-        state.save.assert_called_once()
+        state.save.assert_called_once_with()
 
     @patch('homu.main.PullReqState')
     def test_try_positive(self, MockPullReqState):
@@ -63,7 +64,7 @@ class TestMain(unittest.TestCase):
         _try(state, 'try')
         self.assertTrue(state.try_)
         state.init_build_res.assert_called_once_with([])
-        state.save.assert_called_once()
+        state.save.assert_called_once_with()
         state.change_labels.assert_called_once_with(LabelEvent.TRY)
 
     @patch('homu.main.PullReqState')
@@ -72,7 +73,7 @@ class TestMain(unittest.TestCase):
         _try(state, 'try-')
         self.assertFalse(state.try_)
         state.init_build_res.assert_called_once_with([])
-        state.save.assert_called_once()
+        state.save.assert_called_once_with()
         assert not state.change_labels.called, 'change_labels was called and should never be.'
 
     @patch('homu.main.PullReqState')
@@ -81,7 +82,7 @@ class TestMain(unittest.TestCase):
         clean(state)
         self.assertEqual(state.merge_sha, '')
         state.init_build_res.assert_called_once_with([])
-        state.save.assert_called_once()
+        state.save.assert_called_once_with()
 
     @patch('homu.main.PullReqState')
     def test_retry_try(self, MockPullReqState):
@@ -105,22 +106,30 @@ class TestMain(unittest.TestCase):
         state.delegate = 'delegate'
         delegate_negative(state)
         self.assertEqual(state.delegate, '')
-        state.save.assert_called_once()
+        state.save.assert_called_once_with()
 
     @patch('homu.main.PullReqState')
-    def test_delegate_positive(self, MockPullReqState):
+    def test_delegate_positive_realtime(self, MockPullReqState):
         state = MockPullReqState()
-        delegate_positive(state, True)
-        state.get_repo.assert_called_once()
-        state.add_comment.assert_called_once()
-        state.save.assert_called_once()
+        delegate_positive(state, 'delegate', True)
+        self.assertEqual(state.delegate, 'delegate')
+        state.add_comment.assert_called_once_with(':v: @delegate can now approve this pull request')
+        state.save.assert_called_once_with()
+
+    @patch('homu.main.PullReqState')
+    def test_delegate_positive_not_realtime(self, MockPullReqState):
+        state = MockPullReqState()
+        delegate_positive(state, 'delegate', False)
+        self.assertEqual(state.delegate, 'delegate')
+        state.save.assert_called_once_with()
+        assert not state.add_comment.called, 'state.save was called and should never be.'
 
     @patch('homu.main.PullReqState')
     def test_delegate_to(self, MockPullReqState):
         state = MockPullReqState()
         delegate_to(state, True, 'user')
         self.assertEqual(state.delegate, 'user')
-        state.save.assert_called_once()
+        state.save.assert_called_once_with()
         state.add_comment.assert_called_once_with(
             ':v: @user can now approve this pull request'
         )
@@ -130,7 +139,7 @@ class TestMain(unittest.TestCase):
         state = MockPullReqState()
         set_priority(state, True, '1', {'max_priority': 3})
         self.assertEqual(state.priority, 1)
-        state.save.assert_called_once()
+        state.save.assert_called_once_with()
 
     @patch('homu.main.PullReqState')
     def test_set_priority_not_priority_more_than_max_priority(self, MockPullReqState):
@@ -169,7 +178,7 @@ class TestMain(unittest.TestCase):
         self.assertEqual(state.approved_by, 'user')
         self.assertFalse(state.try_)
         state.set_status.assert_called_once_with('')
-        state.save.assert_called_once()
+        state.save.assert_called_once_with()
 
     @patch('homu.main.PullReqState')
     def test_review_approved_different_usernames_sha_equals_head_sha(self, MockPullReqState):
@@ -184,7 +193,7 @@ class TestMain(unittest.TestCase):
         self.assertEqual(state.approved_by, 'user1')
         self.assertFalse(state.try_)
         state.set_status.assert_called_once_with('')
-        state.save.assert_called_once()
+        state.save.assert_called_once_with()
         state.add_comment.assert_called_once_with(":bulb: This pull request was already approved, no need to approve it again.\n\n- This pull request is currently being tested. If there's no response from the continuous integration service, you may use `retry` to trigger a build again.")
 
     @patch('homu.main.PullReqState')
@@ -247,7 +256,7 @@ class TestMain(unittest.TestCase):
         state = MockPullReqState()
         review_rejected(state, True)
         self.assertEqual(state.approved_by, '')
-        state.save.assert_called_once()
+        state.save.assert_called_once_with()
         state.change_labels.assert_called_once_with(LabelEvent.REJECTED)
 
     def test_sha_or_blank_return_sha(self):

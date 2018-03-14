@@ -513,7 +513,11 @@ def parse_commands(body, username, repo_cfg, state, my_username, db, states,
         elif word == 'delegate+':
             if not _reviewer_auth_verified:
                 continue
-            delegate_positive(state, realtime)
+            delegate_positive(state,
+                              state.get_repo().
+                              pull_request(state.num).
+                              user.login,
+                              realtime)
 
         elif word == 'retry' and realtime:
             if not _try_auth_verified():
@@ -589,10 +593,14 @@ def parse_commands(body, username, repo_cfg, state, my_username, db, states,
     return state_changed
 
 
+def get_portal_turret_dialog():
+    return random.choice(PORTAL_TURRET_DIALOG)
+
+
 def still_here(state):
     state.add_comment(
         ":cake: {}\n\n![]({})".format(
-            random.choice(PORTAL_TURRET_DIALOG), PORTAL_TURRET_IMAGE)
+            get_portal_turret_dialog(), PORTAL_TURRET_IMAGE)
         )
 
 
@@ -673,8 +681,8 @@ def delegate_negative(state):
     state.save()
 
 
-def delegate_positive(state, realtime):
-    state.delegate = state.get_repo().pull_request(state.num).user.login  # noqa
+def delegate_positive(state, delegate, realtime):
+    state.delegate = delegate
     state.save()
 
     if realtime:
