@@ -478,8 +478,14 @@ def parse_commands(body, username, repo_cfg, state, my_username, db, states,
             if not _reviewer_auth_verified:
                 continue
 
-            if not review_approved(words, word, state, realtime,
-                                   username, my_username, sha, states):
+            if not sha and i + 1 < len(words):
+                cur_sha = sha_or_blank(words[i + 1])
+            else:
+                cur_sha = sha
+            approver = word[len('r='):] if word.startswith('r=') else username
+
+            if not review_approved(state, realtime, approver, username,
+                                   my_username, cur_sha, states):
                 continue
 
         elif word == 'r-':
@@ -707,15 +713,8 @@ def set_priority(state, realtime, priority, global_cfg):
     return True
 
 
-def review_approved(words, word, state, realtime, username,
-                    my_username, i, sha, states):
-    if not sha and i + 1 < len(words):
-        cur_sha = sha_or_blank(words[i + 1])
-    else:
-        cur_sha = sha
-
-    approver = word[len('r='):] if word.startswith('r=') else username
-
+def review_approved(state, realtime, approver, username,
+                    my_username, sha, states):
     # Ignore "r=me"
     if approver == 'me':
         return False
@@ -770,15 +769,15 @@ def review_approved(words, word, state, realtime, username,
 
         state.add_comment('\n'.join(lines))
 
-    if sha_cmp(cur_sha, state.head_sha):
+    if sha_cmp(sha, state.head_sha):
         state.approved_by = approver
         state.try_ = False
         state.set_status('')
 
         state.save()
     elif realtime and username != my_username:
-        if cur_sha:
-            msg = '`{}` is not a valid commit SHA.'.format(cur_sha)
+        if sha:
+            msg = '`{}` is not a valid commit SHA.'.format(sha)
             state.add_comment(
                 ':scream_cat: {} Please try again with `{:.7}`.'
                 .format(msg, state.head_sha)

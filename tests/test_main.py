@@ -37,7 +37,7 @@ class TestMain(unittest.TestCase):
         state.save.assert_called_once()
 
     @patch('homu.main.PullReqState')
-    def test_treeclosed_negative(self, MockPullReqState):
+    def test_set_treeclosed(self, MockPullReqState):
         state = MockPullReqState()
         set_treeclosed(state, 'treeclosed=123')
         state.change_treeclosed.assert_called_once_with(123)
@@ -102,6 +102,7 @@ class TestMain(unittest.TestCase):
     @patch('homu.main.PullReqState')
     def test_delegate_negative(self, MockPullReqState):
         state = MockPullReqState()
+        state.delegate = 'delegate'
         delegate_negative(state)
         self.assertEqual(state.delegate, '')
         state.save.assert_called_once()
@@ -134,34 +135,37 @@ class TestMain(unittest.TestCase):
     @patch('homu.main.PullReqState')
     def test_set_priority_not_priority_more_than_max_priority(self, MockPullReqState):
         state = MockPullReqState()
-        set_priority(state, True, '5', {'max_priority': 3})
+        state.priority = 2
+        self.assertFalse(set_priority(state, True, '5', {'max_priority': 3}))
+        self.assertEqual(state.priority, 2)
         state.add_comment.assert_called_once_with(':stop_sign: Priority higher than 3 is ignored.')
+        assert not state.save.called, 'state.save was called and should never be.'
 
     @patch('homu.main.PullReqState')
     def test_review_approved_approver_me(self, MockPullReqState):
         state = MockPullReqState()
-        self.assertFalse(review_approved(['r=me', 'approved'], 'r=me', state, True, 'user', 'user', 0, '', []))
+        self.assertFalse(review_approved(state, True, 'me', 'user', 'user', '', []))
 
     @patch('homu.main.PullReqState')
-    def test_review_approved_wip(self, MockPullReqState):
+    def test_review_approved_wip_todo_realtime(self, MockPullReqState):
         state = MockPullReqState()
         state.title = 'WIP work in progress'
-        self.assertFalse(review_approved(['r+', 'approved'], 'r+', state, True, 'user', 'user', 0, '', []))
+        self.assertFalse(review_approved(state, True, 'user', 'user', 'user', '', []))
         state.add_comment.assert_called_once_with(':clipboard: Looks like this PR is still in progress, ignoring approval')
 
     @patch('homu.main.PullReqState')
-    def test_review_approved_todo(self, MockPullReqState):
+    def test_review_approved_wip_not_realtime(self, MockPullReqState):
         state = MockPullReqState()
-        state.title = 'TODO work in progress'
-        self.assertFalse(review_approved(['r+', 'approved'], 'r+', state, True, 'user', 'user', 0, '', []))
-        state.add_comment.assert_called_once_with(':clipboard: Looks like this PR is still in progress, ignoring approval')
+        state.title = 'WIP work in progress'
+        self.assertFalse(review_approved(state, False, 'user', 'user', 'user', '', []))
+        assert not state.add_comment.called, 'state.add_comment was called and should never be.'
 
     @patch('homu.main.PullReqState')
     def test_review_approved_equal_usernames(self, MockPullReqState):
         state = MockPullReqState()
         state.head_sha = 'abcd123'
         state.title = "My pull request"
-        self.assertTrue(review_approved(['r+', 'approved'], 'r+', state, True, 'user', 'user', 0, 'abcd123', []))
+        self.assertTrue(review_approved(state, True, 'user' ,'user', 'user', 'abcd123', []))
         self.assertEqual(state.approved_by, 'user')
         self.assertFalse(state.try_)
         state.set_status.assert_called_once_with('')
@@ -176,7 +180,7 @@ class TestMain(unittest.TestCase):
         state.status = 'pending'
         states = {}
         states[state.repo_label] = {'label': state}
-        self.assertTrue(review_approved(['r+', 'approved'], 'r+', state, True, 'user1', 'user2', 0, 'abcd123', states))
+        self.assertTrue(review_approved(state, True, 'user1' ,'user1', 'user2', 'abcd123', states))
         self.assertEqual(state.approved_by, 'user1')
         self.assertFalse(state.try_)
         state.set_status.assert_called_once_with('')
@@ -193,7 +197,7 @@ class TestMain(unittest.TestCase):
         state.num = 1
         states = {}
         states[state.repo_label] = {'label': state}
-        self.assertTrue(review_approved(['r+', 'approved'], 'r+', state, True, 'user1', 'user2', 0, 'abcd123', states))
+        self.assertTrue(review_approved(state, True, 'user1', 'user1', 'user2', 'abcd123', states))
         state.add_comment.assert_has_calls([call(":bulb: This pull request was already approved, no need to approve it again.\n\n- This pull request is currently being tested. If there's no response from the continuous integration service, you may use `retry` to trigger a build again."),
                                             call(':scream_cat: `abcd123` is not a valid commit SHA. Please try again with `sdf456`.')])
 
@@ -207,7 +211,7 @@ class TestMain(unittest.TestCase):
         state.status = 'pending'
         states = {}
         states[state.repo_label] = {'label': state}
-        self.assertTrue(review_approved(['r+', 'approved'], 'r+', state, True, 'user1', 'user2', 0, '', states))
+        self.assertTrue(review_approved(state, True, 'user1', 'user1', 'user2', '', states))
         state.add_comment.assert_has_calls([call(":bulb: This pull request was already approved, no need to approve it again.\n\n- This pull request is currently being tested. If there's no response from the continuous integration service, you may use `retry` to trigger a build again."),
                                             call(':pushpin: Commit sdf456 has been approved by `user1`\n\n<!-- @user2 r=user1 sdf456 -->')])
 
@@ -221,7 +225,7 @@ class TestMain(unittest.TestCase):
         state.status = 'pending'
         states = {}
         states[state.repo_label] = {'label': state}
-        self.assertTrue(review_approved(['r+', 'approved'], 'r+', state, True, 'user1', 'user2', 0, '', states))
+        self.assertTrue(review_approved(state, True, 'user1', 'user1', 'user2', '', states))
         state.add_comment.assert_has_calls([call(":bulb: This pull request was already approved, no need to approve it again.\n\n- This pull request is currently being tested. If there's no response from the continuous integration service, you may use `retry` to trigger a build again."),
                                             call(':pushpin: Commit sdf456 has been approved by `user1`\n\n<!-- @user2 r=user1 sdf456 -->'),
                                             call(':evergreen_tree: The tree is currently closed for pull requests below priority 1, this pull request will be tested once the tree is reopened')])
@@ -236,7 +240,7 @@ class TestMain(unittest.TestCase):
         state.status = 'pending'
         states = {}
         states[state.repo_label] = {'label': state}
-        self.assertTrue(review_approved(['r+', 'approved'], 'r+', state, True, 'user', 'user', 0, 'abcd123', states))
+        self.assertTrue(review_approved(state, True, 'user', 'user', 'user', 'abcd123', states))
 
     @patch('homu.main.PullReqState')
     def test_review_rejected(self, MockPullReqState):
