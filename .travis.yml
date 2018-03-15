@@ -4,9 +4,18 @@ python:
   - 3.3
   - 3.4
   - 3.5
+  - 3.6
 install:
   - pip install flake8
+  - pip install 'github3.py<1.0'
+  - pip install 'toml'
+  - pip install 'Jinja2'
+  - pip install 'requests'
+  - pip install 'bottle'
+  - pip install 'waitress'
+  - pip install 'retrying'
 script:
   - flake8 homu
+  - python -m unittest discover tests
 notifications:
   webhooks: http://build.servo.org:54856/travis

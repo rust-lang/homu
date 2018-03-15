@@ -1,7 +1,9 @@
 /homu/__pycache__/
+/tests/__pycache__/
 /.venv/
 /cfg.toml
 /cfg.json
 /homu.egg-info/
 /main.db
 /cache
+**/*.pyc
