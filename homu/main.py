@@ -3,6 +3,7 @@ import github3
 import toml
 import json
 import re
+import functools
 from . import utils
 from .utils import lazy_debug
 import logging
@@ -448,22 +449,24 @@ def parse_commands(body, username, repo_cfg, state, my_username, db, states,
     global global_cfg
     state_changed = False
 
-    _reviewer_auth_verified = verify_auth(
+    _reviewer_auth_verified = functools.partial(
+        verify_auth,
         username,
         repo_cfg,
         state,
         AuthState.REVIEWER,
         realtime,
-        my_username
+        my_username,
     )
 
-    _try_auth_verified = verify_auth(
+    _try_auth_verified = functools.partial(
+        verify_auth,
         username,
         repo_cfg,
         state,
         AuthState.TRY,
         realtime,
-        my_username
+        my_username,
     )
 
     words = get_words(body, my_username)
@@ -475,7 +478,7 @@ def parse_commands(body, username, repo_cfg, state, my_username, db, states,
     for i, word in reversed(list(enumerate(words))):
         found = True
         if word == 'r+' or word.startswith('r='):
-            if not _reviewer_auth_verified:
+            if not _reviewer_auth_verified():
                 continue
 
             if not sha and i + 1 < len(words):
@@ -489,29 +492,29 @@ def parse_commands(body, username, repo_cfg, state, my_username, db, states,
                 continue
 
         elif word == 'r-':
-            if not _reviewer_auth_verified:
+            if not _reviewer_auth_verified():
                 continue
             review_rejected(state, realtime)
 
         elif word.startswith('p='):
-            if not _try_auth_verified:
+            if not _try_auth_verified():
                 continue
-            if not set_priority(state, word[len('p='):], global_cfg):
+            if not set_priority(state, realtime, word[len('p='):], global_cfg):
                 continue
 
         elif word.startswith('delegate='):
-            if not _reviewer_auth_verified:
+            if not _reviewer_auth_verified():
                 continue
             delegate_to(state, realtime, word[len('delegate='):])
 
         elif word == 'delegate-':
             # TODO: why is this a TRY?
-            if not _try_auth_verified:
+            if not _try_auth_verified():
                 continue
             delegate_negative(state)
 
         elif word == 'delegate+':
-            if not _reviewer_auth_verified:
+            if not _reviewer_auth_verified():
                 continue
             delegate_positive(state,
                               state.get_repo().
@@ -525,22 +528,22 @@ def parse_commands(body, username, repo_cfg, state, my_username, db, states,
             retry(state)
 
         elif word in ['try', 'try-'] and realtime:
-            if not _try_auth_verified:
+            if not _try_auth_verified():
                 continue
-            _try(state, word, realtime)
+            _try(state, word)
 
         elif word in ['rollup', 'rollup-']:
-            if not _try_auth_verified:
+            if not _try_auth_verified():
                 continue
             rollup(state, word)
 
         elif word == 'force' and realtime:
-            if not _try_auth_verified:
+            if not _try_auth_verified():
                 continue
             force(repo_cfg, state)
 
         elif word == 'clean' and realtime:
-            if not _try_auth_verified:
+            if not _try_auth_verified():
                 continue
             clean(state)
 
@@ -548,12 +551,12 @@ def parse_commands(body, username, repo_cfg, state, my_username, db, states,
             hello_or_ping(state)
 
         elif word.startswith('treeclosed='):
-            if not _reviewer_auth_verified:
+            if not _reviewer_auth_verified():
                 continue
             set_treeclosed(state, word)
 
         elif word == 'treeclosed-':
-            if not _reviewer_auth_verified:
+            if not _reviewer_auth_verified():
                 continue
             treeclosed_negative(state)
 
