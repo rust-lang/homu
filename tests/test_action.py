@@ -254,7 +254,7 @@ class TestAction(unittest.TestCase):
     def test_sha_cmp_not_equal(self):
         self.assertFalse(Action.sha_cmp('aaabbb12', 'f259660b128ae59133dff123998ee9b643aff050'))
 
-    def test_sha_cmp_short_lenght(self):
+    def test_sha_cmp_short_length(self):
         self.assertFalse(Action.sha_cmp('f25', 'f259660b128ae59133dff123998ee9b643aff050'))
 
 
