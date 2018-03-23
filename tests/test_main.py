@@ -41,7 +41,7 @@ class TestMain(unittest.TestCase):
         assert not mock_still_here.called, 'still_here was called and should never be.'
 
 
-    @patch('homu.main.get_words', return_value=["approved", "r+"])
+    @patch('homu.main.get_words', return_value=["r+"])
     @patch('homu.main.verify_auth', return_value=True)
     @patch('homu.main.PullReqState')
     @patch('homu.action.Action.review_approved')
@@ -50,7 +50,7 @@ class TestMain(unittest.TestCase):
         self.assertTrue(parse_commands({}, '', 'user', {}, state, 'my_user', '', [], sha='abc123'))
         mock_review_approved.assert_called_once_with(state, False, 'user', 'user', 'my_user', 'abc123', [])
 
-    @patch('homu.main.get_words', return_value=["approved", "r+"])
+    @patch('homu.main.get_words', return_value=["r+"])
     @patch('homu.main.verify_auth', return_value=False)
     @patch('homu.main.PullReqState')
     @patch('homu.action.Action.review_approved')
@@ -59,7 +59,7 @@ class TestMain(unittest.TestCase):
         self.assertFalse(parse_commands({}, '', 'user', {}, state, 'my_user', '', [], sha='abc123'))
         assert not mock_review_approved.called, 'mock_review_approved was called and should never be.'
 
-    @patch('homu.main.get_words', return_value=["approved", "r=user2"])
+    @patch('homu.main.get_words', return_value=["r=user2"])
     @patch('homu.main.verify_auth', return_value=True)
     @patch('homu.main.PullReqState')
     @patch('homu.action.Action.review_approved')
@@ -68,7 +68,7 @@ class TestMain(unittest.TestCase):
         self.assertTrue(parse_commands({}, '', 'user', {}, state, 'my_user', '', [], sha='abc123'))
         mock_review_approved.assert_called_once_with(state, False, 'user2', 'user', 'my_user', 'abc123', [])
 
-    @patch('homu.main.get_words', return_value=["nope", "r-"])
+    @patch('homu.main.get_words', return_value=["r-"])
     @patch('homu.main.verify_auth', return_value=True)
     @patch('homu.main.PullReqState')
     @patch('homu.action.Action.review_rejected')
@@ -77,7 +77,7 @@ class TestMain(unittest.TestCase):
         self.assertTrue(parse_commands({}, '', 'user', {}, state, 'my_user', '', [], sha='abc123'))
         mock_review_rejected.assert_called_once_with(state, False)
 
-    @patch('homu.main.get_words', return_value=["priority", "p=1"])
+    @patch('homu.main.get_words', return_value=["p=1"])
     @patch('homu.main.verify_auth', return_value=True)
     @patch('homu.main.PullReqState')
     @patch('homu.action.Action.set_priority')
@@ -86,7 +86,7 @@ class TestMain(unittest.TestCase):
         self.assertTrue(parse_commands({}, '', 'user', {}, state, 'my_user', '', [], sha='abc123'))
         mock_set_priority.assert_called_once_with(state, False, '1', {})
 
-    @patch('homu.main.get_words', return_value=["priority", "delegate=user2"])
+    @patch('homu.main.get_words', return_value=["delegate=user2"])
     @patch('homu.main.verify_auth', return_value=True)
     @patch('homu.main.PullReqState')
     @patch('homu.action.Action.delegate_to')
@@ -95,7 +95,7 @@ class TestMain(unittest.TestCase):
         self.assertTrue(parse_commands({}, '', 'user', {}, state, 'my_user', '', [], sha='abc123'))
         mock_delegate_to.assert_called_once_with(state, False, 'user2')
 
-    @patch('homu.main.get_words', return_value=["delegate negative", "delegate-"])
+    @patch('homu.main.get_words', return_value=["delegate-"])
     @patch('homu.main.verify_auth', return_value=True)
     @patch('homu.main.PullReqState')
     @patch('homu.action.Action.delegate_negative')
@@ -104,7 +104,7 @@ class TestMain(unittest.TestCase):
         self.assertTrue(parse_commands({}, '', 'user', {}, state, 'my_user', '', [], sha='abc123'))
         mock_delegate_negative.assert_called_once_with(state)
 
-    @patch('homu.main.get_words', return_value=["delegate positive", "delegate+"])
+    @patch('homu.main.get_words', return_value=["delegate+"])
     @patch('homu.main.verify_auth', return_value=True)
     @patch('homu.main.PullReqState')
     @patch('homu.action.Action.delegate_positive')
