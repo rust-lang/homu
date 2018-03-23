@@ -1,6 +1,5 @@
 import unittest
 from unittest.mock import patch, Mock, MagicMock, call
-from homu.main import LabelEvent
 from homu.main import sha_or_blank, force, parse_commands, \
 get_words
 
@@ -30,7 +29,7 @@ class TestMain(unittest.TestCase):
     @patch('homu.main.get_words', return_value=["@bot", "are", "you", "still", "there?"])
     @patch('homu.main.verify_auth', return_value=True)
     @patch('homu.main.PullReqState')
-    @patch('homu.action.Action.still_here')
+    @patch('homu.action.still_here')
     def test_parse_commands_still_here_realtime(self, mock_still_here, MockPullReqState, mock_auth, mock_words):
         state = MockPullReqState()
         self.assertFalse(self.call_parse_commands(state=state, realtime=True))
@@ -40,7 +39,7 @@ class TestMain(unittest.TestCase):
     @patch('homu.main.get_words', return_value=["@bot", "are", "you", "still", "there?"])
     @patch('homu.main.verify_auth', return_value=True)
     @patch('homu.main.PullReqState')
-    @patch('homu.action.Action.still_here')
+    @patch('homu.action.still_here')
     def test_parse_commands_still_here_not_realtime(self, mock_still_here, MockPullReqState, mock_auth, mock_words):
         state = MockPullReqState()
         self.assertFalse(self.call_parse_commands(state=state))
@@ -50,7 +49,7 @@ class TestMain(unittest.TestCase):
     @patch('homu.main.get_words', return_value=["r+"])
     @patch('homu.main.verify_auth', return_value=True)
     @patch('homu.main.PullReqState')
-    @patch('homu.action.Action.review_approved')
+    @patch('homu.action.review_approved')
     def test_parse_commands_review_approved_verified(self, mock_review_approved, MockPullReqState, mock_auth, mock_words):
         state = MockPullReqState()
         self.assertTrue(self.call_parse_commands(state=state, sha='abc123'))
@@ -59,7 +58,7 @@ class TestMain(unittest.TestCase):
     @patch('homu.main.get_words', return_value=["r+"])
     @patch('homu.main.verify_auth', return_value=False)
     @patch('homu.main.PullReqState')
-    @patch('homu.action.Action.review_approved')
+    @patch('homu.action.review_approved')
     def test_parse_commands_review_approved_not_verified(self, mock_review_approved, MockPullReqState, mock_auth, mock_words):
         state = MockPullReqState()
         self.assertFalse(self.call_parse_commands(state=state, sha='abc123'))
@@ -68,7 +67,7 @@ class TestMain(unittest.TestCase):
     @patch('homu.main.get_words', return_value=["r=user2"])
     @patch('homu.main.verify_auth', return_value=True)
     @patch('homu.main.PullReqState')
-    @patch('homu.action.Action.review_approved')
+    @patch('homu.action.review_approved')
     def test_parse_commands_review_approved_verified_different_approver(self, mock_review_approved, MockPullReqState, mock_auth, mock_words):
         state = MockPullReqState()
         self.assertTrue(self.call_parse_commands(state=state, sha='abc123'))
@@ -77,7 +76,7 @@ class TestMain(unittest.TestCase):
     @patch('homu.main.get_words', return_value=["r-"])
     @patch('homu.main.verify_auth', return_value=True)
     @patch('homu.main.PullReqState')
-    @patch('homu.action.Action.review_rejected')
+    @patch('homu.action.review_rejected')
     def test_parse_commands_review_rejected(self, mock_review_rejected, MockPullReqState, mock_auth, mock_words):
         state = MockPullReqState()
         self.assertTrue(self.call_parse_commands(state=state, sha='abc123'))
@@ -86,7 +85,7 @@ class TestMain(unittest.TestCase):
     @patch('homu.main.get_words', return_value=["p=1"])
     @patch('homu.main.verify_auth', return_value=True)
     @patch('homu.main.PullReqState')
-    @patch('homu.action.Action.set_priority')
+    @patch('homu.action.set_priority')
     def test_parse_commands_set_priority(self, mock_set_priority, MockPullReqState, mock_auth, mock_words):
         state = MockPullReqState()
         self.assertTrue(self.call_parse_commands(state=state, sha='abc123'))
@@ -95,7 +94,7 @@ class TestMain(unittest.TestCase):
     @patch('homu.main.get_words', return_value=["delegate=user2"])
     @patch('homu.main.verify_auth', return_value=True)
     @patch('homu.main.PullReqState')
-    @patch('homu.action.Action.delegate_to')
+    @patch('homu.action.delegate_to')
     def test_parse_commands_delegate_to(self, mock_delegate_to, MockPullReqState, mock_auth, mock_words):
         state = MockPullReqState()
         self.assertTrue(self.call_parse_commands(state=state, sha='abc123'))
@@ -104,7 +103,7 @@ class TestMain(unittest.TestCase):
     @patch('homu.main.get_words', return_value=["delegate-"])
     @patch('homu.main.verify_auth', return_value=True)
     @patch('homu.main.PullReqState')
-    @patch('homu.action.Action.delegate_negative')
+    @patch('homu.action.delegate_negative')
     def test_parse_commands_delegate_negative(self, mock_delegate_negative, MockPullReqState, mock_auth, mock_words):
         state = MockPullReqState()
         self.assertTrue(self.call_parse_commands(state=state, sha='abc123'))
@@ -113,7 +112,7 @@ class TestMain(unittest.TestCase):
     @patch('homu.main.get_words', return_value=["delegate+"])
     @patch('homu.main.verify_auth', return_value=True)
     @patch('homu.main.PullReqState')
-    @patch('homu.action.Action.delegate_positive')
+    @patch('homu.action.delegate_positive')
     def test_parse_commands_delegate_positive(self, mock_delegate_positive, MockPullReqState, mock_auth, mock_words):
         state = MockPullReqState()
         state.num = 2
@@ -124,7 +123,7 @@ class TestMain(unittest.TestCase):
     @patch('homu.main.get_words', return_value=["retry"])
     @patch('homu.main.verify_auth', return_value=True)
     @patch('homu.main.PullReqState')
-    @patch('homu.action.Action.retry')
+    @patch('homu.action.retry')
     def test_parse_commands_retry_realtime(self, mock_retry, MockPullReqState, mock_auth, mock_words):
         state = MockPullReqState()
         self.assertTrue(self.call_parse_commands(state=state, realtime=True, sha='abc123'))
@@ -133,7 +132,7 @@ class TestMain(unittest.TestCase):
     @patch('homu.main.get_words', return_value=["retry"])
     @patch('homu.main.verify_auth', return_value=True)
     @patch('homu.main.PullReqState')
-    @patch('homu.action.Action.retry')
+    @patch('homu.action.retry')
     def test_parse_commands_retry_not_realtime(self, mock_retry, MockPullReqState, mock_auth, mock_words):
         state = MockPullReqState()
         self.assertFalse(self.call_parse_commands(state=state, sha='abc123'))
@@ -142,7 +141,7 @@ class TestMain(unittest.TestCase):
     @patch('homu.main.get_words', return_value=["try"])
     @patch('homu.main.verify_auth', return_value=True)
     @patch('homu.main.PullReqState')
-    @patch('homu.action.Action._try')
+    @patch('homu.action._try')
     def test_parse_commands_try_realtime(self, mock_try, MockPullReqState, mock_auth, mock_words):
         state = MockPullReqState()
         self.assertTrue(self.call_parse_commands(state=state, realtime=True, sha='abc123'))
@@ -151,7 +150,7 @@ class TestMain(unittest.TestCase):
     @patch('homu.main.get_words', return_value=["try"])
     @patch('homu.main.verify_auth', return_value=True)
     @patch('homu.main.PullReqState')
-    @patch('homu.action.Action._try')
+    @patch('homu.action._try')
     def test_parse_commands_try_not_realtime(self, mock_try, MockPullReqState, mock_auth, mock_words):
         state = MockPullReqState()
         self.assertFalse(self.call_parse_commands(state=state, sha='abc123'))
@@ -160,7 +159,7 @@ class TestMain(unittest.TestCase):
     @patch('homu.main.get_words', return_value=["rollup"])
     @patch('homu.main.verify_auth', return_value=True)
     @patch('homu.main.PullReqState')
-    @patch('homu.action.Action.rollup')
+    @patch('homu.action.rollup')
     def test_parse_commands_rollup(self, mock_rollup, MockPullReqState, mock_auth, mock_words):
         state = MockPullReqState()
         self.assertTrue(self.call_parse_commands(state=state, realtime=True, sha='abc123'))
@@ -169,7 +168,7 @@ class TestMain(unittest.TestCase):
     @patch('homu.main.get_words', return_value=["clean"])
     @patch('homu.main.verify_auth', return_value=True)
     @patch('homu.main.PullReqState')
-    @patch('homu.action.Action.clean')
+    @patch('homu.action.clean')
     def test_parse_commands_clean_realtime(self, mock_clean, MockPullReqState, mock_auth, mock_words):
         state = MockPullReqState()
         self.assertTrue(self.call_parse_commands(state=state, realtime=True, sha='abc123'))
@@ -178,7 +177,7 @@ class TestMain(unittest.TestCase):
     @patch('homu.main.get_words', return_value=["clean"])
     @patch('homu.main.verify_auth', return_value=True)
     @patch('homu.main.PullReqState')
-    @patch('homu.action.Action.clean')
+    @patch('homu.action.clean')
     def test_parse_commands_clean_not_realtime(self, mock_clean, MockPullReqState, mock_auth, mock_words):
         state = MockPullReqState()
         self.assertFalse(self.call_parse_commands(state=state, sha='abc123'))
@@ -187,7 +186,7 @@ class TestMain(unittest.TestCase):
     @patch('homu.main.get_words', return_value=["hello?"])
     @patch('homu.main.verify_auth', return_value=True)
     @patch('homu.main.PullReqState')
-    @patch('homu.action.Action.hello_or_ping')
+    @patch('homu.action.hello_or_ping')
     def test_parse_commands_hello_or_ping_realtime(self, mock_hello_or_ping, MockPullReqState, mock_auth, mock_words):
         state = MockPullReqState()
         self.assertTrue(self.call_parse_commands(state=state, realtime=True, sha='abc123'))
@@ -196,7 +195,7 @@ class TestMain(unittest.TestCase):
     @patch('homu.main.get_words', return_value=["hello?"])
     @patch('homu.main.verify_auth', return_value=True)
     @patch('homu.main.PullReqState')
-    @patch('homu.action.Action.hello_or_ping')
+    @patch('homu.action.hello_or_ping')
     def test_parse_commands_hello_or_ping_not_realtime(self, mock_hello_or_ping, MockPullReqState, mock_auth, mock_words):
         state = MockPullReqState()
         self.assertFalse(self.call_parse_commands(state=state, sha='abc123'))
@@ -205,7 +204,7 @@ class TestMain(unittest.TestCase):
     @patch('homu.main.get_words', return_value=["treeclosed=1"])
     @patch('homu.main.verify_auth', return_value=True)
     @patch('homu.main.PullReqState')
-    @patch('homu.action.Action.set_treeclosed')
+    @patch('homu.action.set_treeclosed')
     def test_parse_commands_set_treeclosed(self, mock_set_treeclosed, MockPullReqState, mock_auth, mock_words):
         state = MockPullReqState()
         self.assertTrue(self.call_parse_commands(state=state, realtime=True, sha='abc123'))
@@ -214,7 +213,7 @@ class TestMain(unittest.TestCase):
     @patch('homu.main.get_words', return_value=["treeclosed-"])
     @patch('homu.main.verify_auth', return_value=True)
     @patch('homu.main.PullReqState')
-    @patch('homu.action.Action.treeclosed_negative')
+    @patch('homu.action.treeclosed_negative')
     def test_parse_commands_treeclosed_negative(self, mock_treeclosed_negative, MockPullReqState, mock_auth, mock_words):
         state = MockPullReqState()
         self.assertTrue(self.call_parse_commands(state=state, realtime=True, sha='abc123'))

@@ -7,7 +7,7 @@ import functools
 from enum import IntEnum
 from . import utils
 from .utils import lazy_debug
-from .action import Action, LabelEvent
+from . import action
 import logging
 from threading import Thread, Lock, Timer
 import time
@@ -368,7 +368,7 @@ class PullReqState:
             desc,
             context='homu')
         self.add_comment(':boom: {}'.format(desc))
-        self.change_labels(LabelEvent.TIMED_OUT)
+        self.change_labels(action.LabelEvent.TIMED_OUT)
 
 
 def sha_or_blank(sha):
@@ -442,8 +442,6 @@ def parse_commands(cfg, body, username, repo_cfg, state, my_username, db,
         realtime,
         my_username,
     )
-
-    action = Action()
 
     words = get_words(body, my_username)
     if words[1:] == ["are", "you", "still", "there?"] and realtime:
@@ -816,7 +814,7 @@ def create_merge(state, repo_cfg, branch, logger, git_cfg,
         context='homu')
 
     state.add_comment(':lock: ' + desc)
-    state.change_labels(LabelEvent.CONFLICT)
+    state.change_labels(action.LabelEvent.CONFLICT)
 
     return ''
 
@@ -872,7 +870,7 @@ def do_exemption_merge(state, logger, repo_cfg, git_cfg, url, check_merge,
     utils.github_create_status(state.get_repo(), state.head_sha, 'success',
                                url, desc, context='homu')
     state.add_comment(':zap: {}: {}.'.format(desc, reason))
-    state.change_labels(LabelEvent.EXEMPTED)
+    state.change_labels(action.LabelEvent.EXEMPTED)
 
     state.merge_sha = merge_sha
     state.save()
@@ -1237,7 +1235,7 @@ def fetch_mergeability(mergeable_que):
                 state.add_comment(':umbrella: The latest upstream changes{} made this pull request unmergeable. Please resolve the merge conflicts.'.format(  # noqa
                     _blame
                 ))
-                state.change_labels(LabelEvent.CONFLICT)
+                state.change_labels(action.LabelEvent.CONFLICT)
 
             state.set_mergeable(mergeable, que=False)
 

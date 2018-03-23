@@ -1,29 +1,28 @@
 import unittest
 from unittest.mock import patch, call
-from homu.action import Action
-from homu.main import LabelEvent
+from homu import action
+from homu.action import LabelEvent
 
 class TestAction(unittest.TestCase):
 
     @patch('homu.main.PullReqState')
-    @patch('homu.action.Action.get_portal_turret_dialog', return_value='message')
+    @patch('homu.action.get_portal_turret_dialog', return_value='message')
     def test_still_here(self, mock_message, MockPullReqState):
         state = MockPullReqState()
-        cmd = Action()
-        cmd.still_here(state)
+        action.still_here(state)
         state.add_comment.assert_called_once_with(':cake: message\n\n![](https://cloud.githubusercontent.com/assets/1617736/22222924/c07b2a1c-e16d-11e6-91b3-ac659550585c.png)')
 
     @patch('homu.main.PullReqState')
     def test_set_treeclosed(self, MockPullReqState):
         state = MockPullReqState()
-        Action().set_treeclosed(state, 'treeclosed=123')
+        action.set_treeclosed(state, 'treeclosed=123')
         state.change_treeclosed.assert_called_once_with(123)
         state.save.assert_called_once_with()
 
     @patch('homu.main.PullReqState')
     def test_delegate_to(self, MockPullReqState):
         state = MockPullReqState()
-        Action().delegate_to(state, True, 'user')
+        action.delegate_to(state, True, 'user')
         self.assertEqual(state.delegate, 'user')
         state.save.assert_called_once_with()
         state.add_comment.assert_called_once_with(
@@ -33,27 +32,27 @@ class TestAction(unittest.TestCase):
     @patch('homu.main.PullReqState')
     def test_hello_or_ping(self, MockPullReqState):
         state = MockPullReqState()
-        Action().hello_or_ping(state)
+        action.hello_or_ping(state)
         state.add_comment.assert_called_once_with(":sleepy: I'm awake I'm awake")
 
     @patch('homu.main.PullReqState')
     def test_rollup_positive(self, MockPullReqState):
         state = MockPullReqState()
-        Action().rollup(state, 'rollup')
+        action.rollup(state, 'rollup')
         self.assertTrue(state.rollup)
         state.save.assert_called_once_with()
 
     @patch('homu.main.PullReqState')
     def test_rollup_negative(self, MockPullReqState):
         state = MockPullReqState()
-        Action().rollup(state, 'rollup-')
+        action.rollup(state, 'rollup-')
         self.assertFalse(state.rollup)
         state.save.assert_called_once_with()
 
     @patch('homu.main.PullReqState')
     def test_try_positive(self, MockPullReqState):
         state = MockPullReqState()
-        Action()._try(state, 'try')
+        action._try(state, 'try')
         self.assertTrue(state.try_)
         state.init_build_res.assert_called_once_with([])
         state.save.assert_called_once_with()
@@ -62,7 +61,7 @@ class TestAction(unittest.TestCase):
     @patch('homu.main.PullReqState')
     def test_try_negative(self, MockPullReqState):
         state = MockPullReqState()
-        Action()._try(state, 'try-')
+        action._try(state, 'try-')
         self.assertFalse(state.try_)
         state.init_build_res.assert_called_once_with([])
         state.save.assert_called_once_with()
@@ -71,7 +70,7 @@ class TestAction(unittest.TestCase):
     @patch('homu.main.PullReqState')
     def test_clean(self, MockPullReqState):
         state = MockPullReqState()
-        Action().clean(state)
+        action.clean(state)
         self.assertEqual(state.merge_sha, '')
         state.init_build_res.assert_called_once_with([])
         state.save.assert_called_once_with()
@@ -80,14 +79,14 @@ class TestAction(unittest.TestCase):
     def test_retry_try(self, MockPullReqState):
         state = MockPullReqState()
         state.try_ = True
-        Action().retry(state)
+        action.retry(state)
         state.set_status.assert_called_once_with('')
         state.change_labels.assert_called_once_with(LabelEvent.TRY)
 
     @patch('homu.main.PullReqState')
     def test_treeclosed_negative(self, MockPullReqState):
         state = MockPullReqState()
-        Action().treeclosed_negative(state)
+        action.treeclosed_negative(state)
         state.change_treeclosed.assert_called_once_with(-1)
         state.save.assert_called_once_with()
 
@@ -95,7 +94,7 @@ class TestAction(unittest.TestCase):
     def test_retry_approved(self, MockPullReqState):
         state = MockPullReqState()
         state.try_ = False
-        Action().retry(state)
+        action.retry(state)
         state.set_status.assert_called_once_with('')
         state.change_labels.assert_called_once_with(LabelEvent.APPROVED)
 
@@ -103,14 +102,14 @@ class TestAction(unittest.TestCase):
     def test_delegate_negative(self, MockPullReqState):
         state = MockPullReqState()
         state.delegate = 'delegate'
-        Action().delegate_negative(state)
+        action.delegate_negative(state)
         self.assertEqual(state.delegate, '')
         state.save.assert_called_once_with()
 
     @patch('homu.main.PullReqState')
     def test_delegate_positive_realtime(self, MockPullReqState):
         state = MockPullReqState()
-        Action().delegate_positive(state, 'delegate', True)
+        action.delegate_positive(state, 'delegate', True)
         self.assertEqual(state.delegate, 'delegate')
         state.add_comment.assert_called_once_with(':v: @delegate can now approve this pull request')
         state.save.assert_called_once_with()
@@ -118,7 +117,7 @@ class TestAction(unittest.TestCase):
     @patch('homu.main.PullReqState')
     def test_delegate_positive_not_realtime(self, MockPullReqState):
         state = MockPullReqState()
-        Action().delegate_positive(state, 'delegate', False)
+        action.delegate_positive(state, 'delegate', False)
         self.assertEqual(state.delegate, 'delegate')
         state.save.assert_called_once_with()
         assert not state.add_comment.called, 'state.save was called and should never be.'
@@ -126,7 +125,7 @@ class TestAction(unittest.TestCase):
     @patch('homu.main.PullReqState')
     def test_set_priority_not_priority_less_than_max_priority(self, MockPullReqState):
         state = MockPullReqState()
-        Action().set_priority(state, True, '1', {'max_priority': 3})
+        action.set_priority(state, True, '1', {'max_priority': 3})
         self.assertEqual(state.priority, 1)
         state.save.assert_called_once_with()
 
@@ -134,7 +133,7 @@ class TestAction(unittest.TestCase):
     def test_set_priority_not_priority_more_than_max_priority(self, MockPullReqState):
         state = MockPullReqState()
         state.priority = 2
-        self.assertFalse(Action().set_priority(state, True, '5', {'max_priority': 3}))
+        self.assertFalse(action.set_priority(state, True, '5', {'max_priority': 3}))
         self.assertEqual(state.priority, 2)
         state.add_comment.assert_called_once_with(':stop_sign: Priority higher than 3 is ignored.')
         assert not state.save.called, 'state.save was called and should never be.'
@@ -142,20 +141,20 @@ class TestAction(unittest.TestCase):
     @patch('homu.main.PullReqState')
     def test_review_approved_approver_me(self, MockPullReqState):
         state = MockPullReqState()
-        self.assertFalse(Action().review_approved(state, True, 'me', 'user', 'user', '', []))
+        self.assertFalse(action.review_approved(state, True, 'me', 'user', 'user', '', []))
 
     @patch('homu.main.PullReqState')
     def test_review_approved_wip_todo_realtime(self, MockPullReqState):
         state = MockPullReqState()
         state.title = 'WIP work in progress'
-        self.assertFalse(Action().review_approved(state, True, 'user', 'user', 'user', '', []))
+        self.assertFalse(action.review_approved(state, True, 'user', 'user', 'user', '', []))
         state.add_comment.assert_called_once_with(':clipboard: Looks like this PR is still in progress, ignoring approval')
 
     @patch('homu.main.PullReqState')
     def test_review_approved_wip_not_realtime(self, MockPullReqState):
         state = MockPullReqState()
         state.title = 'WIP work in progress'
-        self.assertFalse(Action().review_approved(state, False, 'user', 'user', 'user', '', []))
+        self.assertFalse(action.review_approved(state, False, 'user', 'user', 'user', '', []))
         assert not state.add_comment.called, 'state.add_comment was called and should never be.'
 
     @patch('homu.main.PullReqState')
@@ -163,7 +162,7 @@ class TestAction(unittest.TestCase):
         state = MockPullReqState()
         state.head_sha = 'abcd123'
         state.title = "My pull request"
-        self.assertTrue(Action().review_approved(state, True, 'user' ,'user', 'user', 'abcd123', []))
+        self.assertTrue(action.review_approved(state, True, 'user' ,'user', 'user', 'abcd123', []))
         self.assertEqual(state.approved_by, 'user')
         self.assertFalse(state.try_)
         state.set_status.assert_called_once_with('')
@@ -178,7 +177,7 @@ class TestAction(unittest.TestCase):
         state.status = 'pending'
         states = {}
         states[state.repo_label] = {'label': state}
-        self.assertTrue(Action().review_approved(state, True, 'user1' ,'user1', 'user2', 'abcd123', states))
+        self.assertTrue(action.review_approved(state, True, 'user1' ,'user1', 'user2', 'abcd123', states))
         self.assertEqual(state.approved_by, 'user1')
         self.assertFalse(state.try_)
         state.set_status.assert_called_once_with('')
@@ -195,7 +194,7 @@ class TestAction(unittest.TestCase):
         state.num = 1
         states = {}
         states[state.repo_label] = {'label': state}
-        self.assertTrue(Action().review_approved(state, True, 'user1', 'user1', 'user2', 'abcd123', states))
+        self.assertTrue(action.review_approved(state, True, 'user1', 'user1', 'user2', 'abcd123', states))
         state.add_comment.assert_has_calls([call(":bulb: This pull request was already approved, no need to approve it again.\n\n- This pull request is currently being tested. If there's no response from the continuous integration service, you may use `retry` to trigger a build again."),
                                             call(':scream_cat: `abcd123` is not a valid commit SHA. Please try again with `sdf456`.')])
 
@@ -209,7 +208,7 @@ class TestAction(unittest.TestCase):
         state.status = 'pending'
         states = {}
         states[state.repo_label] = {'label': state}
-        self.assertTrue(Action().review_approved(state, True, 'user1', 'user1', 'user2', '', states))
+        self.assertTrue(action.review_approved(state, True, 'user1', 'user1', 'user2', '', states))
         state.add_comment.assert_has_calls([call(":bulb: This pull request was already approved, no need to approve it again.\n\n- This pull request is currently being tested. If there's no response from the continuous integration service, you may use `retry` to trigger a build again."),
                                             call(':pushpin: Commit sdf456 has been approved by `user1`\n\n<!-- @user2 r=user1 sdf456 -->')])
 
@@ -223,7 +222,7 @@ class TestAction(unittest.TestCase):
         state.status = 'pending'
         states = {}
         states[state.repo_label] = {'label': state}
-        self.assertTrue(Action().review_approved(state, True, 'user1', 'user1', 'user2', '', states))
+        self.assertTrue(action.review_approved(state, True, 'user1', 'user1', 'user2', '', states))
         state.add_comment.assert_has_calls([call(":bulb: This pull request was already approved, no need to approve it again.\n\n- This pull request is currently being tested. If there's no response from the continuous integration service, you may use `retry` to trigger a build again."),
                                             call(':pushpin: Commit sdf456 has been approved by `user1`\n\n<!-- @user2 r=user1 sdf456 -->'),
                                             call(':evergreen_tree: The tree is currently closed for pull requests below priority 1, this pull request will be tested once the tree is reopened')])
@@ -238,24 +237,24 @@ class TestAction(unittest.TestCase):
         state.status = 'pending'
         states = {}
         states[state.repo_label] = {'label': state}
-        self.assertTrue(Action().review_approved(state, True, 'user', 'user', 'user', 'abcd123', states))
+        self.assertTrue(action.review_approved(state, True, 'user', 'user', 'user', 'abcd123', states))
 
     @patch('homu.main.PullReqState')
     def test_review_rejected(self, MockPullReqState):
         state = MockPullReqState()
-        Action().review_rejected(state, True)
+        action.review_rejected(state, True)
         self.assertEqual(state.approved_by, '')
         state.save.assert_called_once_with()
         state.change_labels.assert_called_once_with(LabelEvent.REJECTED)
 
     def test_sha_cmp_equal(self):
-        self.assertTrue(Action.sha_cmp('f259660', 'f259660b128ae59133dff123998ee9b643aff050'))
+        self.assertTrue(action.sha_cmp('f259660', 'f259660b128ae59133dff123998ee9b643aff050'))
 
     def test_sha_cmp_not_equal(self):
-        self.assertFalse(Action.sha_cmp('aaabbb12', 'f259660b128ae59133dff123998ee9b643aff050'))
+        self.assertFalse(action.sha_cmp('aaabbb12', 'f259660b128ae59133dff123998ee9b643aff050'))
 
     def test_sha_cmp_short_length(self):
-        self.assertFalse(Action.sha_cmp('f25', 'f259660b128ae59133dff123998ee9b643aff050'))
+        self.assertFalse(action.sha_cmp('f25', 'f259660b128ae59133dff123998ee9b643aff050'))
 
 
 if __name__ == '__main__':
