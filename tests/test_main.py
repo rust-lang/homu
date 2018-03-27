@@ -208,7 +208,7 @@ class TestMain(unittest.TestCase):
     def test_parse_commands_set_treeclosed(self, mock_set_treeclosed, MockPullReqState, mock_auth, mock_words):
         state = MockPullReqState()
         self.assertTrue(self.call_parse_commands(state=state, realtime=True, sha='abc123'))
-        mock_set_treeclosed.assert_called_once_with(state, 'treeclosed=1')
+        mock_set_treeclosed.assert_called_once_with(state, '1')
 
     @patch('homu.main.get_words', return_value=["treeclosed-"])
     @patch('homu.main.verify_auth', return_value=True)

@@ -15,7 +15,7 @@ class TestAction(unittest.TestCase):
     @patch('homu.main.PullReqState')
     def test_set_treeclosed(self, MockPullReqState):
         state = MockPullReqState()
-        action.set_treeclosed(state, 'treeclosed=123')
+        action.set_treeclosed(state, '123')
         state.change_treeclosed.assert_called_once_with(123)
         state.save.assert_called_once_with()
 

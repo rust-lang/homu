@@ -527,7 +527,7 @@ def parse_commands(cfg, body, username, repo_cfg, state, my_username, db,
         elif word.startswith('treeclosed='):
             if not _reviewer_auth_verified():
                 continue
-            action.set_treeclosed(state, word)
+            action.set_treeclosed(state, word.lstrip("treeclosed="))
 
         elif word == 'treeclosed-':
             if not _reviewer_auth_verified():
