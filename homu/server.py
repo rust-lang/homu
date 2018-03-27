@@ -300,6 +300,7 @@ def github():
                 state.body = info['pull_request']['body']
 
                 if parse_commands(
+                    g.cfg,
                     body,
                     username,
                     repo_cfg,
@@ -346,6 +347,7 @@ def github():
                 # FIXME: Review comments are ignored here
                 for c in state.get_repo().issue(pull_num).iter_comments():
                     found = parse_commands(
+                        g.cfg,
                         c.body,
                         c.user.login,
                         repo_cfg,
@@ -440,6 +442,7 @@ def github():
             state.body = info['issue']['body']
 
             if parse_commands(
+                g.cfg,
                 body,
                 username,
                 repo_cfg,
