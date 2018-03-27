@@ -7,7 +7,7 @@ python:
   - 3.6
 install:
   - pip install flake8
-  - pip install 'github3.py<1.0'
+  - pip install 'github3.py'
   - pip install 'toml'
   - pip install 'Jinja2'
   - pip install 'requests'
