@@ -44,7 +44,7 @@ def delegate_to(state, realtime, delegate):
 
 def set_treeclosed(state, word):
     try:
-        treeclosed = int(word[len('treeclosed='):])
+        treeclosed = int(word)
         state.change_treeclosed(treeclosed)
     except ValueError:
         pass
