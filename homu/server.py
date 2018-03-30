@@ -234,15 +234,18 @@ def rollup(user_gh, state, repo_label, repo_cfg, repo):
             if e.code != 409:
                 raise
 
-            failures.append(state.num)
+            failures.append(state)
         else:
-            successes.append(state.num)
+            successes.append(state)
 
     title = 'Rollup of {} pull requests'.format(len(successes))
-    body = '- Successful merges: {}\n- Failed merges: {}'.format(
-        ', '.join('#{}'.format(x) for x in successes),
-        ', '.join('#{}'.format(x) for x in failures),
-    )
+
+    body = 'Successful merges:\n\n'
+    for x in successes:
+        body += ' - #{} ({})\n'.format(x.num, x.title)
+    body += '\nFailed merges:\n\n'
+    for x in failures:
+        body += ' - #{} ({})\n'.format(x.num, x.title)
 
     try:
         rollup = repo_cfg.get('branch', {}).get('rollup', 'rollup')

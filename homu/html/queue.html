@@ -28,15 +28,38 @@
             #search { width: 150px; }
             .hide { display: none; }
             th { cursor: pointer; }
+            #actual-rollup { background: #c7e2ff; border: #00acf7 3px double; border-radius: 5px; width: 75%; padding: 0 1em; }
         </style>
     </head>
     <body>
         <h1>Homu queue - {% if repo_url %}<a href="{{repo_url}}" target="_blank">{{repo_label}}</a>{% else %}{{repo_label}}{% endif %} {% if treeclosed %} [TREE CLOSED below priority {{treeclosed}}] {% endif %}</h2>
 
         <p>
-            <button type="button" id="rollup">Create a rollup</button>
+            <button type="button" id="expand-rollup">Create a rollup</button>
             <button type="button" id="synch">Synchronize</button>
         </p>
+
+        <div id="actual-rollup" class="hide">
+            <p>This will create a new pull request consisting of <span id="checkbox-count">0</span> PRs.</p>
+            <p>A rollup is useful for shortening the queue, but jumping the queue is unfair to older PRs who have waited too long.</p>
+            <p>When creating a real rollup, try to be fair to the PRs not rolled up. You may pick one of these strategies:</p>
+            <ul>
+                <li>
+                    <p>Always include the first <span class="approved">approved</span> PR in the rollup.
+                    Then give the new pull request the highest priority (p=100);</p>
+                    <p><i>or</i></p>
+                </li>
+                <li>
+                    <p>After creating the rollup, give it a fairly high priority (p=10), then assign
+                    even higher priorties (p=20, ...) to every PRs older than the oldest rolled up PR.</p>
+                </li>
+            </ul>
+            <p>
+                <button type="button" id="rollup">Rollup</button>
+                —
+                <button type="button" id="cancel-rollup">Cancel</button>
+            </p>
+        </div>
 
         <p>
             {{ total }} total, {{ approved }} approved, {{ rolled_up }} rolled up, {{ failed }} failed
@@ -91,9 +114,17 @@
         <script src="//cdn.datatables.net/1.10.4/js/jquery.dataTables.min.js"></script>
 
         <script>
-            document.getElementById('rollup').onclick = function(ev) {
-                if (!confirm('This will create a new pull request. Proceed?')) return;
+            document.getElementById('expand-rollup').onclick = function() {
+                var checkboxCount = document.querySelectorAll('#queue tbody input[type=checkbox]:checked').length;
+                document.getElementById('checkbox-count').innerHTML = checkboxCount;
+                document.getElementById('actual-rollup').className = '';
+            };
 
+            document.getElementById('cancel-rollup').onclick = function() {
+                document.getElementById('actual-rollup').className = 'hide';
+            };
+
+            document.getElementById('rollup').onclick = function(ev) {
                 var nums = [];
                 var els = document.querySelectorAll('#queue tbody input[type=checkbox]:checked');
                 for (var i=0;i<els.length;i++) {
