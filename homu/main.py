@@ -547,12 +547,12 @@ def parse_commands(body, username, repo_cfg, state, my_username, db, states,
                 if cur_sha:
                     msg = '`{}` is not a valid commit SHA.'.format(cur_sha)
                     state.add_comment(
-                        ':scream_cat: {} Please try again with `{:.7}`.'
+                        ':scream_cat: {} Please try again with `{}`.'
                         .format(msg, state.head_sha)
                     )
                 else:
                     state.add_comment(
-                        ':pushpin: Commit {:.7} has been approved by `{}`\n\n<!-- @{} r={} {} -->'  # noqa
+                        ':pushpin: Commit {} has been approved by `{}`\n\n<!-- @{} r={} {} -->'  # noqa
                         .format(
                             state.head_sha,
                             approver,
