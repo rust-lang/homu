@@ -246,6 +246,7 @@ def rollup(user_gh, state, repo_label, repo_cfg, repo):
     body += '\nFailed merges:\n\n'
     for x in failures:
         body += ' - #{} ({})\n'.format(x.num, x.title)
+    body += '\nr? @ghost'
 
     try:
         rollup = repo_cfg.get('branch', {}).get('rollup', 'rollup')
