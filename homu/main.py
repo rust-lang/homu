@@ -22,6 +22,7 @@ import subprocess
 from .git_helper import SSH_KEY_FILE
 import shlex
 import random
+import weakref
 
 STATUS_TO_PRIORITY = {
     'success': 0,
@@ -343,7 +344,13 @@ class PullReqState:
     def start_testing(self, timeout):
         self.test_started = time.time()     # FIXME: Save in the local database
         self.set_status('pending')
-        timer = Timer(timeout, self.timed_out)
+
+        wm = weakref.WeakMethod(self.timed_out)
+        def timed_out():
+            m = wm()
+            if m:
+                m()
+        timer = Timer(timeout, timed_out)
         timer.start()
         self.timeout_timer = timer
 
