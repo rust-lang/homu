@@ -833,6 +833,32 @@ def create_merge(state, repo_cfg, branch, logger, git_cfg,
         state.body)
 
     desc = 'Merge conflict'
+    comment = (
+        'This pull request and the master branch diverged in a way that cannot'
+        ' be automatically merged. Please rebase on top of the latest master'
+        ' branch, and let the reviewer approve again.\n'
+        '\n'
+        '<details><summary>How do I rebase?</summary>\n\n'
+        'Assuming `self` is your fork and `upstream` is this repository,'
+        ' you can resolve the conflict following these steps:\n\n'
+        '1. `git checkout {branch}` *(switch to your branch)*\n'
+        '2. `git fetch upstream master` *(retrieve the latest master)*\n'
+        '3. `git rebase upstream/master -p` *(rebase on top of it)*\n'
+        '4. Follow the on-screen instruction to resolve conflicts'
+        ' (check `git status` if you got lost).\n'
+        '5. `git push self {branch} --force-with-lease` *(update this PR)*\n\n'
+        'You may also read'
+        ' [*Git Rebasing to Resolve Conflicts* by Drew Blessing](http://blessing.io/git/git-rebase/open-source/2015/08/23/git-rebasing-to-resolve-conflicts.html)' # noqa
+        ' for a short tutorial.\n\n'
+        'Please avoid the ["**Resolve conflicts**" button](https://help.github.com/articles/resolving-a-merge-conflict-on-github/) on GitHub.' #noqa
+        ' It uses `git merge` instead of `git rebase` which makes the PR commit'
+        ' history more difficult to read.\n\n'
+        'Sometimes step 4 will complete without asking for resolution. This is'
+        ' usually due to difference between how `Cargo.lock` conflict is'
+        ' handled during merge and rebase. This is normal, and you should still'
+        ' perform step 5 to update this PR.\n\n'
+        '</details>\n\n'
+    ).format(branch=state.head_ref.split(':', 1)[1])
 
     if git_cfg['local_git']:
 
@@ -861,6 +887,7 @@ def create_merge(state, repo_cfg, branch, logger, git_cfg,
                     utils.silent_call(git_cmd('rebase', '--abort'))
                     if utils.silent_call(git_cmd('rebase', base_sha)) == 0:
                         desc = 'Auto-squashing failed'
+                        comment = ''
             else:
                 ap = '<try>' if state.try_ else state.approved_by
                 text = '\nCloses: #{}\nApproved by: {}'.format(state.num, ap)
@@ -903,22 +930,29 @@ def create_merge(state, repo_cfg, branch, logger, git_cfg,
                         merge_base_sha, base_sha))
                 except subprocess.CalledProcessError:
                     desc = 'Auto-squashing failed'
+                    comment = ''
                     ok = False
 
             if ok:
                 utils.logged_call(git_cmd('checkout', '-B', branch, base_sha))
                 try:
-                    utils.logged_call(git_cmd(
-                        '-c',
-                        'user.name=' + git_cfg['name'],
-                        '-c',
-                        'user.email=' + git_cfg['email'],
-                        'merge',
-                        'heads/homu-tmp',
-                        '--no-ff',
-                        '-m',
-                        merge_msg))
-                except subprocess.CalledProcessError:
+                    subprocess.check_output(
+                        git_cmd(
+                            '-c',
+                            'user.name=' + git_cfg['name'],
+                            '-c',
+                            'user.email=' + git_cfg['email'],
+                            'merge',
+                            'heads/homu-tmp',
+                            '--no-ff',
+                            '-m',
+                            merge_msg),
+                        stderr=subprocess.STDOUT,
+                        universal_newlines=True)
+                except subprocess.CalledProcessError as e:
+                    comment += '<details><summary>Error message</summary>\n\n```text\n'
+                    comment += e.output
+                    comment += '\n```\n\n</details>'
                     pass
                 else:
                     if ensure_merge_equal:
@@ -964,7 +998,7 @@ def create_merge(state, repo_cfg, branch, logger, git_cfg,
         desc,
         context='homu')
 
-    state.add_comment(':lock: ' + desc)
+    state.add_comment(':lock: {}\n\n{}'.format(desc, comment))
     state.change_labels(LabelEvent.CONFLICT)
 
     return ''
