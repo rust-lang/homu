@@ -642,6 +642,14 @@ def parse_commands(body, username, repo_cfg, state, my_username, db, states,
         elif word in ['try', 'try-'] and realtime:
             if not _try_auth_verified():
                 continue
+            if state.status == '' and state.approved_by:
+                state.add_comment(
+                    ':no_good: '
+                    'Please do not `try` after a pull request has been `r+`ed.'
+                    ' If you need to `try`, unapprove (`r-`) it first.'
+                )
+                continue
+
             state.try_ = word == 'try'
 
             state.merge_sha = ''
