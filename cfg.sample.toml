@@ -1,3 +1,6 @@
+# Priority values above max_priority will be refused.
+max_priority = 9001
+
 [github]
 
 # Information for securely interacting with GitHub. These are found/generated
@@ -10,8 +13,6 @@ access_token = ""
 app_client_id = ""
 app_client_secret = ""
 
-# Priority values above max_priority will be refused.
-max_priority = 9001
 
 [git]
 
