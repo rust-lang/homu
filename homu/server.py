@@ -66,6 +66,39 @@ def index():
                                          for label in sorted(g.repos)])
 
 
+@get('/results/<repo_label:path>/<pull:int>')
+def result(repo_label, pull):
+    if repo_label not in g.states:
+        abort(404, 'No such repository: {}'.format(repo_label))
+    states = [state for state in g.states[repo_label].values()
+              if state.num == pull]
+    if len(states) == 0:
+        abort(204, 'No build results for pull request {}'.format(pull))
+
+    state = states[0]
+    builders = []
+    repo_url = 'https://github.com/{}/{}'.format(
+        g.cfg['repo'][repo_label]['owner'],
+        g.cfg['repo'][repo_label]['name'])
+    for (builder, data) in state.build_res.items():
+        result = "pending"
+        if data['res'] is not None:
+            result = "success" if data['res'] else "failed"
+
+        if not data['url']:
+            # This happens to old try builds
+            abort(204, 'No build results for pull request {}'.format(pull))
+
+        builders.append({
+            'url': data['url'],
+            'result': result,
+            'name': builder,
+        })
+
+    return g.tpls['build_res'].render(repo_label=repo_label, repo_url=repo_url,
+                                      builders=builders, pull=pull)
+
+
 @get('/queue/<repo_label:path>')
 def queue(repo_label):
     logger = g.logger.getChild('queue')
@@ -782,6 +815,7 @@ def start(cfg, states, queue_handler, repo_cfgs, repos, logger,
     tpls = {}
     tpls['index'] = env.get_template('index.html')
     tpls['queue'] = env.get_template('queue.html')
+    tpls['build_res'] = env.get_template('build_res.html')
 
     g.cfg = cfg
     g.states = states

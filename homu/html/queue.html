@@ -98,7 +98,13 @@
                     <td><a href="{{state.repo_url}}">{{state.repo_label}}</a></td>
                     {% endif %}
                     <td><a href="{{state.url}}">{{state.num}}</a></td>
-                    <td class="{{state.status}}">{{state.status}}{{state.status_ext}}</td>
+                    <td class="{{state.status}}">
+                        {% if state.status == "pending" or state.status == "failure" or state.status == "success" %}
+                            <a href="../results/{{state.repo_label}}/{{state.num}}">{{state.status}}{{state.status_ext}}</a>
+                        {% else %}
+                            {{state.status}}{{state.status_ext}}
+                        {% endif %}
+                    </td>
                     <td class="{{state.mergeable}}">{{state.mergeable}}</td>
                     <td>{{state.title}}</td>
                     <td>{{state.head_ref}}</td>
