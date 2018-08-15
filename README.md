@@ -64,10 +64,11 @@ Appveyor support.
 ### How to install
 
 ```sh
-$ sudo apt-get install python3-venv 
-$ pyvenv .venv
+$ sudo apt-get install python3-venv python3-wheel
+$ python3 -m venv .venv
 $ . .venv/bin/activate
-$ git clone https://github.com/servo/homu.git
+$ pip install -U pip
+$ git clone https://github.com/rust-ops/homu.git
 $ pip install -e homu
 ```
 
