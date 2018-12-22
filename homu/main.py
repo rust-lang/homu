@@ -1236,6 +1236,9 @@ def start_build(state, repo_cfgs, buildbot_slots, logger, db, git_cfg):
 
         if found_travis_context and len(builders) == 1:
             can_try_travis_exemption = True
+    if 'checks' in repo_cfg:
+        builders += ['checks-' + key for key, value in repo_cfg['checks'].items() if 'name' in value]  # noqa
+        only_status_builders = False
 
     if len(builders) is 0:
         raise RuntimeError('Invalid configuration')
@@ -1680,6 +1683,8 @@ def main():
                     builders += ['travis']
                 if 'status' in repo_cfg:
                     builders += ['status-' + key for key, value in repo_cfg['status'].items() if 'context' in value]  # noqa
+                if 'checks' in repo_cfg:
+                    builders += ['checks-' + key for key, value in repo_cfg['checks'].items() if 'name' in value]  # noqa
                 if len(builders) is 0:
                     raise RuntimeError('Invalid configuration')
 

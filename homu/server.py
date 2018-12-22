@@ -517,6 +517,33 @@ def github():
         report_build_res(info['state'] == 'success', info['target_url'],
                          'status-' + status_name, state, logger, repo_cfg)
 
+    elif event_type == 'check_run':
+        try:
+            state, repo_label = find_state(info['check_run']['head_sha'])
+        except ValueError:
+            return 'OK'
+
+        current_run_name = info['check_run']['name']
+        checks_name = None
+        if 'checks' in repo_cfg:
+            for name, value in repo_cfg['checks'].items():
+                if 'name' in value and value['name'] == current_run_name:
+                    checks_name = name
+        if checks_name is None:
+            return 'OK'
+
+        if info['check_run']['status'] != 'completed':
+            return 'OK'
+        if info['check_run']['conclusion'] is None:
+            return 'OK'
+
+        report_build_res(
+            info['check_run']['conclusion'] == 'success',
+            info['check_run']['details_url'],
+            'checks-' + checks_name,
+            state, logger, repo_cfg,
+        )
+
     return 'OK'
 
 
