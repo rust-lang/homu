@@ -196,7 +196,10 @@ def callback():
         logger.warn('/callback encountered an error '
                     'during github oauth callback')
         # probably related to https://gitlab.com/pycqa/flake8/issues/42
-        lazy_debug(logger, lambda: 'github oauth callback err: {}'.format(ex))  # noqa
+        lazy_debug(
+            logger,
+            lambda ex=ex: 'github oauth callback err: {}'.format(ex),
+        )
         abort(502, 'Bad Gateway')
 
     args = urllib.parse.parse_qs(res.text)
@@ -514,6 +517,33 @@ def github():
         report_build_res(info['state'] == 'success', info['target_url'],
                          'status-' + status_name, state, logger, repo_cfg)
 
+    elif event_type == 'check_run':
+        try:
+            state, repo_label = find_state(info['check_run']['head_sha'])
+        except ValueError:
+            return 'OK'
+
+        current_run_name = info['check_run']['name']
+        checks_name = None
+        if 'checks' in repo_cfg:
+            for name, value in repo_cfg['checks'].items():
+                if 'name' in value and value['name'] == current_run_name:
+                    checks_name = name
+        if checks_name is None:
+            return 'OK'
+
+        if info['check_run']['status'] != 'completed':
+            return 'OK'
+        if info['check_run']['conclusion'] is None:
+            return 'OK'
+
+        report_build_res(
+            info['check_run']['conclusion'] == 'success',
+            info['check_run']['details_url'],
+            'checks-' + checks_name,
+            state, logger, repo_cfg,
+        )
+
     return 'OK'
 
 
@@ -653,9 +683,10 @@ def buildbot():
                     except Exception as ex:
                         logger.warn('/buildbot encountered an error during '
                                     'github logs request')
-                        # probably related to
-                        # https://gitlab.com/pycqa/flake8/issues/42
-                        lazy_debug(logger, lambda: 'buildbot logs err: {}'.format(ex))  # noqa
+                        lazy_debug(
+                            logger,
+                            lambda ex=ex: 'buildbot logs err: {}'.format(ex),
+                        )
                         abort(502, 'Bad Gateway')
 
                     mat = INTERRUPTED_BY_HOMU_RE.search(res.text)

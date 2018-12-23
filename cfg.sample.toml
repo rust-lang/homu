@@ -120,10 +120,10 @@ secret = ""
 #]
 
 # Travis integration. Don't forget to allow Travis to test the `auto` branch!
-[repo.NAME.status.travis]
-# String label set by status updates. Don't touch this unless you really know
-# what you're doing.
-context = 'continuous-integration/travis-ci/push'
+[repo.NAME.checks.travis]
+# Name of the Checks API run. Don't touch this unless you really know what
+# you're doing.
+name = "Travis CI - Branch"
 
 # Appveyor integration. Don't forget to allow Appveyor to test the `auto` branch!
 #[repo.NAME.status.appveyor]
@@ -143,6 +143,13 @@ context = 'continuous-integration/travis-ci/push'
 # build should be exempted. If omitted, looks for the same context. This is
 # only used if status_based_exemption is true.
 #pr_context = ""
+
+# Generic GitHub Checks API support. You don't need this if you're using the
+# above examples for Travis/Appveyor.
+#[repo.NAME.checks.LABEL]
+#
+# String name of the Checks run.
+#name = ""
 
 # Use buildbot for running tests
 #[repo.NAME.buildbot]

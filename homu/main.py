@@ -346,6 +346,7 @@ class PullReqState:
         self.set_status('pending')
 
         wm = weakref.WeakMethod(self.timed_out)
+
         def timed_out():
             m = wm()
             if m:
@@ -874,12 +875,12 @@ def create_merge(state, repo_cfg, branch, logger, git_cfg,
         'You may also read'
         ' [*Git Rebasing to Resolve Conflicts* by Drew Blessing](http://blessing.io/git/git-rebase/open-source/2015/08/23/git-rebasing-to-resolve-conflicts.html)' # noqa
         ' for a short tutorial.\n\n'
-        'Please avoid the ["**Resolve conflicts**" button](https://help.github.com/articles/resolving-a-merge-conflict-on-github/) on GitHub.' #noqa
-        ' It uses `git merge` instead of `git rebase` which makes the PR commit'
+        'Please avoid the ["**Resolve conflicts**" button](https://help.github.com/articles/resolving-a-merge-conflict-on-github/) on GitHub.' # noqa
+        ' It uses `git merge` instead of `git rebase` which makes the PR commit' # noqa
         ' history more difficult to read.\n\n'
         'Sometimes step 4 will complete without asking for resolution. This is'
         ' usually due to difference between how `Cargo.lock` conflict is'
-        ' handled during merge and rebase. This is normal, and you should still'
+        ' handled during merge and rebase. This is normal, and you should still' # noqa
         ' perform step 5 to update this PR.\n\n'
         '</details>\n\n'
     ).format(branch=state.head_ref.split(':', 1)[1])
@@ -974,7 +975,7 @@ def create_merge(state, repo_cfg, branch, logger, git_cfg,
                         stderr=subprocess.STDOUT,
                         universal_newlines=True)
                 except subprocess.CalledProcessError as e:
-                    comment += '<details><summary>Error message</summary>\n\n```text\n'
+                    comment += '<details><summary>Error message</summary>\n\n```text\n' # noqa
                     comment += e.output
                     comment += '\n```\n\n</details>'
                     pass
@@ -1235,6 +1236,9 @@ def start_build(state, repo_cfgs, buildbot_slots, logger, db, git_cfg):
 
         if found_travis_context and len(builders) == 1:
             can_try_travis_exemption = True
+    if 'checks' in repo_cfg:
+        builders += ['checks-' + key for key, value in repo_cfg['checks'].items() if 'name' in value]  # noqa
+        only_status_builders = False
 
     if len(builders) is 0:
         raise RuntimeError('Invalid configuration')
@@ -1679,6 +1683,8 @@ def main():
                     builders += ['travis']
                 if 'status' in repo_cfg:
                     builders += ['status-' + key for key, value in repo_cfg['status'].items() if 'context' in value]  # noqa
+                if 'checks' in repo_cfg:
+                    builders += ['checks-' + key for key, value in repo_cfg['checks'].items() if 'name' in value]  # noqa
                 if len(builders) is 0:
                     raise RuntimeError('Invalid configuration')
 
