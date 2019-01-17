@@ -467,6 +467,9 @@ def github():
                         '<!-- @{} r- -->'.format(base_ref, g.my_username)
                     )
 
+            state.title = info['pull_request']['title']
+            state.body = info['pull_request']['body']
+
             state.save()
 
         else:
