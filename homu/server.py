@@ -448,6 +448,27 @@ def github():
 
             state.save()
 
+        elif action == 'edited':
+            state = g.states[repo_label][pull_num]
+
+            base_ref = info['pull_request']['base']['ref']
+            if state.base_ref != base_ref:
+                state.base_ref = base_ref
+                state.set_mergeable(None)
+                # Remove PR approval when the branch changes, to prevent the PR
+                # authors to merge the changes on other branches
+                if state.get_status() != '':
+                    state.approved_by = ''
+                    state.set_status('')
+                    state.change_labels(LabelEvent.PUSHED)
+                    state.add_comment(
+                        ':warning: The base branch changed to `{}`, and the '
+                        'PR will need to be re-approved.\n\n'
+                        '<!-- @{} r- -->'.format(base_ref, g.my_username)
+                    )
+
+            state.save()
+
         else:
             lazy_debug(logger, lambda: 'Invalid pull_request action: {}'.format(action))  # noqa
 
