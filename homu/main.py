@@ -1200,7 +1200,9 @@ def start_build(state, repo_cfgs, buildbot_slots, logger, db, git_cfg):
 
     lazy_debug(logger, lambda: "start_build on {!r}".format(state.get_repo()))
 
-    assert state.head_sha == state.get_repo().pull_request(state.num).head.sha
+    pr = state.get_repo().pull_request(state.num)
+    assert state.head_sha == pr.head.sha
+    assert state.base_ref == pr.base.ref
 
     repo_cfg = repo_cfgs[state.repo_label]
 
