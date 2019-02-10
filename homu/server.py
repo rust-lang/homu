@@ -505,7 +505,7 @@ def github():
             for name, value in repo_cfg['status'].items():
                 if 'context' in value and value['context'] == info['context']:
                     status_name = name
-        if status_name is "":
+        if status_name == "":
             return 'OK'
 
         if info['state'] == 'pending':

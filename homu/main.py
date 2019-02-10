@@ -1245,7 +1245,7 @@ def start_build(state, repo_cfgs, buildbot_slots, logger, db, git_cfg):
         builders += ['checks-' + key for key, value in repo_cfg['checks'].items() if 'name' in value]  # noqa
         only_status_builders = False
 
-    if len(builders) is 0:
+    if len(builders) == 0:
         raise RuntimeError('Invalid configuration')
 
     lazy_debug(logger, lambda: "start_build: builders={!r}".format(builders))
@@ -1699,7 +1699,7 @@ def main():
                     builders += ['status-' + key for key, value in repo_cfg['status'].items() if 'context' in value]  # noqa
                 if 'checks' in repo_cfg:
                     builders += ['checks-' + key for key, value in repo_cfg['checks'].items() if 'name' in value]  # noqa
-                if len(builders) is 0:
+                if len(builders) == 0:
                     raise RuntimeError('Invalid configuration')
 
                 state.init_build_res(builders, use_db=False)
