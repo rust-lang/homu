@@ -4,6 +4,7 @@ import toml
 import json
 import re
 import functools
+from . import comments
 from . import utils
 from .utils import lazy_debug
 import logging
@@ -177,8 +178,12 @@ class PullReqState:
             issue = self.issue = self.get_repo().issue(self.num)
         return issue
 
-    def add_comment(self, text):
-        self.get_issue().create_comment(text)
+    def add_comment(self, comment):
+        if issubclass(comment.__class__, comments.Comment):
+            comment = "%s\n<!-- homu: %s -->" % (
+                comment.render(), comment.jsonify(),
+            )
+        self.get_issue().create_comment(comment)
 
     def change_labels(self, event):
         event = self.label_events.get(event.value, {})
@@ -1289,7 +1294,16 @@ def start_build(state, repo_cfgs, buildbot_slots, logger, db, git_cfg):
         desc,
         context='homu')
 
-    state.add_comment(':hourglass: ' + desc)
+    if state.try_:
+        state.add_comment(comments.TryBuildStarted(
+            head_sha=state.head_sha,
+            merge_sha=state.merge_sha,
+        ))
+    else:
+        state.add_comment(comments.BuildStarted(
+            head_sha=state.head_sha,
+            merge_sha=state.merge_sha,
+        ))
 
     return True
 
