@@ -568,9 +568,7 @@ def report_build_res(succ, url, builder, state, logger, repo_cfg):
                 state.add_comment(comments.BuildCompleted(
                     approved_by=state.approved_by,
                     base_ref=state.base_ref,
-                    builders=dict(
-                        (k, v["url"]) for k, v in state.build_res.items()
-                    ),
+                    builders={k: v["url"] for k, v in state.build_res.items()},
                     merge_sha=state.merge_sha,
                 ))
                 state.change_labels(LabelEvent.SUCCEED)
@@ -601,9 +599,7 @@ def report_build_res(succ, url, builder, state, logger, repo_cfg):
                     state.add_comment(':eyes: ' + desc)
             else:
                 state.add_comment(comments.TryBuildCompleted(
-                    builders=dict(
-                        (k, v["url"]) for k, v in state.build_res.items()
-                    ),
+                    builders={k: v["url"] for k, v in state.build_res.items()},
                     merge_sha=state.merge_sha,
                 ))
                 state.change_labels(LabelEvent.TRY_SUCCEED)

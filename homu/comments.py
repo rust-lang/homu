@@ -81,3 +81,10 @@ class TryBuildFailed(Comment):
         return ":broken_heart: Test failed - [%s](%s)" % (
             self.builder_name, self.builder_url
         )
+
+
+class TimedOut(Comment):
+    params = []
+
+    def render(self):
+        return ":boom: Test timed out"

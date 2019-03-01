@@ -367,15 +367,14 @@ class PullReqState:
         self.save()
         self.set_status('failure')
 
-        desc = 'Test timed out'
         utils.github_create_status(
             self.get_repo(),
             self.head_sha,
             'failure',
             '',
-            desc,
+            'Test timed out',
             context='homu')
-        self.add_comment(':boom: {}'.format(desc))
+        self.add_comment(comments.TimedOut())
         self.change_labels(LabelEvent.TIMED_OUT)
 
 
