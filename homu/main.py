@@ -179,7 +179,7 @@ class PullReqState:
         return issue
 
     def add_comment(self, comment):
-        if issubclass(comment.__class__, comments.Comment):
+        if isinstance(comment, comments.Comment):
             comment = "%s\n<!-- homu: %s -->" % (
                 comment.render(), comment.jsonify(),
             )
