@@ -4,6 +4,7 @@ import toml
 import json
 import re
 import functools
+from . import comments
 from . import utils
 from .utils import lazy_debug
 import logging
@@ -177,8 +178,12 @@ class PullReqState:
             issue = self.issue = self.get_repo().issue(self.num)
         return issue
 
-    def add_comment(self, text):
-        self.get_issue().create_comment(text)
+    def add_comment(self, comment):
+        if isinstance(comment, comments.Comment):
+            comment = "%s\n<!-- homu: %s -->" % (
+                comment.render(), comment.jsonify(),
+            )
+        self.get_issue().create_comment(comment)
 
     def change_labels(self, event):
         event = self.label_events.get(event.value, {})
@@ -362,15 +367,14 @@ class PullReqState:
         self.save()
         self.set_status('failure')
 
-        desc = 'Test timed out'
         utils.github_create_status(
             self.get_repo(),
             self.head_sha,
             'failure',
             '',
-            desc,
+            'Test timed out',
             context='homu')
-        self.add_comment(':boom: {}'.format(desc))
+        self.add_comment(comments.TimedOut())
         self.change_labels(LabelEvent.TIMED_OUT)
 
 
@@ -1242,7 +1246,7 @@ def start_build(state, repo_cfgs, buildbot_slots, logger, db, git_cfg):
         builders += ['checks-' + key for key, value in repo_cfg['checks'].items() if 'name' in value]  # noqa
         only_status_builders = False
 
-    if len(builders) is 0:
+    if len(builders) == 0:
         raise RuntimeError('Invalid configuration')
 
     lazy_debug(logger, lambda: "start_build: builders={!r}".format(builders))
@@ -1291,7 +1295,16 @@ def start_build(state, repo_cfgs, buildbot_slots, logger, db, git_cfg):
         desc,
         context='homu')
 
-    state.add_comment(':hourglass: ' + desc)
+    if state.try_:
+        state.add_comment(comments.TryBuildStarted(
+            head_sha=state.head_sha,
+            merge_sha=state.merge_sha,
+        ))
+    else:
+        state.add_comment(comments.BuildStarted(
+            head_sha=state.head_sha,
+            merge_sha=state.merge_sha,
+        ))
 
     return True
 
@@ -1687,7 +1700,7 @@ def main():
                     builders += ['status-' + key for key, value in repo_cfg['status'].items() if 'context' in value]  # noqa
                 if 'checks' in repo_cfg:
                     builders += ['checks-' + key for key, value in repo_cfg['checks'].items() if 'name' in value]  # noqa
-                if len(builders) is 0:
+                if len(builders) == 0:
                     raise RuntimeError('Invalid configuration')
 
                 state.init_build_res(builders, use_db=False)

@@ -9,6 +9,7 @@ from .main import (
     synchronize,
     LabelEvent,
 )
+from . import comments
 from . import utils
 from .utils import lazy_debug
 import github3
@@ -528,7 +529,7 @@ def github():
             for name, value in repo_cfg['status'].items():
                 if 'context' in value and value['context'] == info['context']:
                     status_name = name
-        if status_name is "":
+        if status_name == "":
             return 'OK'
 
         if info['state'] == 'pending':
@@ -582,19 +583,18 @@ def report_build_res(succ, url, builder, state, logger, repo_cfg):
     if succ:
         if all(x['res'] for x in state.build_res.values()):
             state.set_status('success')
-            desc = 'Test successful'
-            utils.github_create_status(state.get_repo(), state.head_sha,
-                                       'success', url, desc, context='homu')
-
-            urls = ', '.join('[{}]({})'.format(builder, x['url']) for builder, x in sorted(state.build_res.items()))  # noqa
-            test_comment = ':sunny: {} - {}'.format(desc, urls)
+            utils.github_create_status(
+                state.get_repo(), state.head_sha,
+                'success', url, "Test successful", context='homu'
+            )
 
             if state.approved_by and not state.try_:
-                comment = (test_comment + '\n' +
-                           'Approved by: {}\nPushing {} to {}...'
-                           ).format(state.approved_by, state.merge_sha,
-                                    state.base_ref)
-                state.add_comment(comment)
+                state.add_comment(comments.BuildCompleted(
+                    approved_by=state.approved_by,
+                    base_ref=state.base_ref,
+                    builders={k: v["url"] for k, v in state.build_res.items()},
+                    merge_sha=state.merge_sha,
+                ))
                 state.change_labels(LabelEvent.SUCCEED)
                 try:
                     try:
@@ -622,24 +622,32 @@ def report_build_res(succ, url, builder, state, logger, repo_cfg):
 
                     state.add_comment(':eyes: ' + desc)
             else:
-                comment = (test_comment + '\n' +
-                           'State: approved={} try={}'
-                           ).format(state.approved_by, state.try_)
-                state.add_comment(comment)
+                state.add_comment(comments.TryBuildCompleted(
+                    builders={k: v["url"] for k, v in state.build_res.items()},
+                    merge_sha=state.merge_sha,
+                ))
                 state.change_labels(LabelEvent.TRY_SUCCEED)
 
     else:
         if state.status == 'pending':
             state.set_status('failure')
-            desc = 'Test failed'
-            utils.github_create_status(state.get_repo(), state.head_sha,
-                                       'failure', url, desc, context='homu')
+            utils.github_create_status(
+                state.get_repo(), state.head_sha,
+                'failure', url, "Test failed", context='homu'
+            )
 
-            state.add_comment(':broken_heart: {} - [{}]({})'.format(desc,
-                                                                    builder,
-                                                                    url))
-            event = LabelEvent.TRY_FAILED if state.try_ else LabelEvent.FAILED
-            state.change_labels(event)
+            if state.try_:
+                state.add_comment(comments.TryBuildFailed(
+                    builder_url=url,
+                    builder_name=builder,
+                ))
+                state.change_labels(LabelEvent.TRY_FAILED)
+            else:
+                state.add_comment(comments.BuildFailed(
+                    builder_url=url,
+                    builder_name=builder,
+                ))
+                state.change_labels(LabelEvent.FAILED)
 
     g.queue_handler()
 
