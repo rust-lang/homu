@@ -413,14 +413,15 @@ PORTAL_TURRET_DIALOG = ["Target acquired", "Activated", "There you are"]
 PORTAL_TURRET_IMAGE = "https://cloud.githubusercontent.com/assets/1617736/22222924/c07b2a1c-e16d-11e6-91b3-ac659550585c.png"  # noqa
 
 
-def parse_commands(body, username, repo_cfg, state, my_username, db, states,
-                   *, realtime=False, sha=''):
+def parse_commands(body, username, repo_label, repo_cfg, state, my_username,
+                   db, states, *, realtime=False, sha=''):
     global global_cfg
     state_changed = False
 
     _reviewer_auth_verified = functools.partial(
         verify_auth,
         username,
+        repo_label,
         repo_cfg,
         state,
         AuthState.REVIEWER,
@@ -430,6 +431,7 @@ def parse_commands(body, username, repo_cfg, state, my_username, db, states,
     _try_auth_verified = functools.partial(
         verify_auth,
         username,
+        repo_label,
         repo_cfg,
         state,
         AuthState.TRY,
@@ -551,8 +553,8 @@ def parse_commands(body, username, repo_cfg, state, my_username, db, states,
                     state.change_labels(LabelEvent.APPROVED)
 
         elif word == 'r-':
-            if not verify_auth(username, repo_cfg, state, AuthState.REVIEWER,
-                               realtime, my_username):
+            if not verify_auth(username, repo_label, repo_cfg, state,
+                               AuthState.REVIEWER, realtime, my_username):
                 continue
 
             state.approved_by = ''
@@ -561,8 +563,8 @@ def parse_commands(body, username, repo_cfg, state, my_username, db, states,
                 state.change_labels(LabelEvent.REJECTED)
 
         elif word.startswith('p='):
-            if not verify_auth(username, repo_cfg, state, AuthState.TRY,
-                               realtime, my_username):
+            if not verify_auth(username, repo_label, repo_cfg, state,
+                               AuthState.TRY, realtime, my_username):
                 continue
             try:
                 pvalue = int(word[len('p='):])
@@ -580,8 +582,8 @@ def parse_commands(body, username, repo_cfg, state, my_username, db, states,
             state.save()
 
         elif word.startswith('delegate='):
-            if not verify_auth(username, repo_cfg, state, AuthState.REVIEWER,
-                               realtime, my_username):
+            if not verify_auth(username, repo_label, repo_cfg, state,
+                               AuthState.REVIEWER, realtime, my_username):
                 continue
 
             state.delegate = word[len('delegate='):]
@@ -1483,6 +1485,7 @@ def synchronize(repo_label, repo_cfg, logger, gh, states, repos, db, mergeable_q
                 parse_commands(
                     comment.body,
                     comment.user.login,
+                    repo_label,
                     repo_cfg,
                     state,
                     my_username,
@@ -1495,6 +1498,7 @@ def synchronize(repo_label, repo_cfg, logger, gh, states, repos, db, mergeable_q
             parse_commands(
                 comment.body,
                 comment.user.login,
+                repo_label,
                 repo_cfg,
                 state,
                 my_username,
