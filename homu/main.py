@@ -6,6 +6,7 @@ import re
 import functools
 from . import comments
 from . import utils
+from .auth import verify as verify_auth
 from .utils import lazy_debug
 import logging
 from threading import Thread, Lock, Timer
@@ -406,46 +407,6 @@ class LabelEvent(Enum):
     TIMED_OUT = 'timed_out'
     INTERRUPTED = 'interrupted'
     PUSHED = 'pushed'
-
-
-def verify_auth(username, repo_cfg, state, auth, realtime, my_username):
-    # In some cases (e.g. non-fully-qualified r+) we recursively talk to
-    # ourself via a hidden markdown comment in the message. This is so that
-    # when re-synchronizing after shutdown we can parse these comments and
-    # still know the SHA for the approval.
-    #
-    # So comments from self should always be allowed
-    if username == my_username:
-        return True
-    is_reviewer = False
-    auth_collaborators = repo_cfg.get('auth_collaborators', False)
-    if auth_collaborators:
-        is_reviewer = state.get_repo().is_collaborator(username)
-    if not is_reviewer:
-        is_reviewer = username in repo_cfg.get('reviewers', [])
-    if not is_reviewer:
-        is_reviewer = username.lower() == state.delegate.lower()
-
-    if is_reviewer:
-        have_auth = AuthState.REVIEWER
-    elif username in repo_cfg.get('try_users', []):
-        have_auth = AuthState.TRY
-    else:
-        have_auth = AuthState.NONE
-    if have_auth >= auth:
-        return True
-    else:
-        if realtime:
-            reply = '@{}: :key: Insufficient privileges: '.format(username)
-            if auth == AuthState.REVIEWER:
-                if auth_collaborators:
-                    reply += 'Collaborator required'
-                else:
-                    reply += 'Not in reviewers'
-            elif auth == AuthState.TRY:
-                reply += 'not in try users'
-            state.add_comment(reply)
-        return False
 
 
 PORTAL_TURRET_DIALOG = ["Target acquired", "Activated", "There you are"]
