@@ -6,6 +6,7 @@ import re
 import functools
 from . import comments
 from . import utils
+from .auth import verify as verify_auth
 from .utils import lazy_debug
 import logging
 from threading import Thread, Lock, Timer
@@ -408,58 +409,19 @@ class LabelEvent(Enum):
     PUSHED = 'pushed'
 
 
-def verify_auth(username, repo_cfg, state, auth, realtime, my_username):
-    # In some cases (e.g. non-fully-qualified r+) we recursively talk to
-    # ourself via a hidden markdown comment in the message. This is so that
-    # when re-synchronizing after shutdown we can parse these comments and
-    # still know the SHA for the approval.
-    #
-    # So comments from self should always be allowed
-    if username == my_username:
-        return True
-    is_reviewer = False
-    auth_collaborators = repo_cfg.get('auth_collaborators', False)
-    if auth_collaborators:
-        is_reviewer = state.get_repo().is_collaborator(username)
-    if not is_reviewer:
-        is_reviewer = username in repo_cfg.get('reviewers', [])
-    if not is_reviewer:
-        is_reviewer = username.lower() == state.delegate.lower()
-
-    if is_reviewer:
-        have_auth = AuthState.REVIEWER
-    elif username in repo_cfg.get('try_users', []):
-        have_auth = AuthState.TRY
-    else:
-        have_auth = AuthState.NONE
-    if have_auth >= auth:
-        return True
-    else:
-        if realtime:
-            reply = '@{}: :key: Insufficient privileges: '.format(username)
-            if auth == AuthState.REVIEWER:
-                if auth_collaborators:
-                    reply += 'Collaborator required'
-                else:
-                    reply += 'Not in reviewers'
-            elif auth == AuthState.TRY:
-                reply += 'not in try users'
-            state.add_comment(reply)
-        return False
-
-
 PORTAL_TURRET_DIALOG = ["Target acquired", "Activated", "There you are"]
 PORTAL_TURRET_IMAGE = "https://cloud.githubusercontent.com/assets/1617736/22222924/c07b2a1c-e16d-11e6-91b3-ac659550585c.png"  # noqa
 
 
-def parse_commands(body, username, repo_cfg, state, my_username, db, states,
-                   *, realtime=False, sha=''):
+def parse_commands(body, username, repo_label, repo_cfg, state, my_username,
+                   db, states, *, realtime=False, sha=''):
     global global_cfg
     state_changed = False
 
     _reviewer_auth_verified = functools.partial(
         verify_auth,
         username,
+        repo_label,
         repo_cfg,
         state,
         AuthState.REVIEWER,
@@ -469,6 +431,7 @@ def parse_commands(body, username, repo_cfg, state, my_username, db, states,
     _try_auth_verified = functools.partial(
         verify_auth,
         username,
+        repo_label,
         repo_cfg,
         state,
         AuthState.TRY,
@@ -590,8 +553,8 @@ def parse_commands(body, username, repo_cfg, state, my_username, db, states,
                     state.change_labels(LabelEvent.APPROVED)
 
         elif word == 'r-':
-            if not verify_auth(username, repo_cfg, state, AuthState.REVIEWER,
-                               realtime, my_username):
+            if not verify_auth(username, repo_label, repo_cfg, state,
+                               AuthState.REVIEWER, realtime, my_username):
                 continue
 
             state.approved_by = ''
@@ -600,8 +563,8 @@ def parse_commands(body, username, repo_cfg, state, my_username, db, states,
                 state.change_labels(LabelEvent.REJECTED)
 
         elif word.startswith('p='):
-            if not verify_auth(username, repo_cfg, state, AuthState.TRY,
-                               realtime, my_username):
+            if not verify_auth(username, repo_label, repo_cfg, state,
+                               AuthState.TRY, realtime, my_username):
                 continue
             try:
                 pvalue = int(word[len('p='):])
@@ -619,8 +582,8 @@ def parse_commands(body, username, repo_cfg, state, my_username, db, states,
             state.save()
 
         elif word.startswith('delegate='):
-            if not verify_auth(username, repo_cfg, state, AuthState.REVIEWER,
-                               realtime, my_username):
+            if not verify_auth(username, repo_label, repo_cfg, state,
+                               AuthState.REVIEWER, realtime, my_username):
                 continue
 
             state.delegate = word[len('delegate='):]
@@ -1522,6 +1485,7 @@ def synchronize(repo_label, repo_cfg, logger, gh, states, repos, db, mergeable_q
                 parse_commands(
                     comment.body,
                     comment.user.login,
+                    repo_label,
                     repo_cfg,
                     state,
                     my_username,
@@ -1534,6 +1498,7 @@ def synchronize(repo_label, repo_cfg, logger, gh, states, repos, db, mergeable_q
             parse_commands(
                 comment.body,
                 comment.user.login,
+                repo_label,
                 repo_cfg,
                 state,
                 my_username,

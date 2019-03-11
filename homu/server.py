@@ -343,6 +343,7 @@ def github():
                 if parse_commands(
                     body,
                     username,
+                    repo_label,
                     repo_cfg,
                     state,
                     g.my_username,
@@ -389,6 +390,7 @@ def github():
                     found = parse_commands(
                         c.body,
                         c.user.login,
+                        repo_label,
                         repo_cfg,
                         state,
                         g.my_username,
@@ -507,6 +509,7 @@ def github():
             if parse_commands(
                 body,
                 username,
+                repo_label,
                 repo_cfg,
                 state,
                 g.my_username,

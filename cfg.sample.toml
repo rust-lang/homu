@@ -60,6 +60,11 @@ sync_on_start = true
 owner = ""
 name = ""
 
+# If this repo should be integrated with the permissions defined in
+# https://github.com/rust-lang/team uncomment the following line.
+# Note that the other ACLs will *also* apply.
+#rust_team = true
+
 # Who can approve PRs (r+ rights)? You can put GitHub usernames here.
 reviewers = []
 # Alternatively, set this  allow any github collaborator;
