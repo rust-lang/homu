@@ -8,4 +8,4 @@ install:
 script:
   - flake8 homu
 notifications:
-  webhooks: http://build.servo.org:54856/travis
+  webhooks: https://build.servo.org:54856/travis
