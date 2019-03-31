@@ -96,7 +96,6 @@ try_users = []
 #
 #auto = "auto"
 #try = "try"
-#rollup = "rollup"
 
 [repo.NAME.github]
 # Arbitrary secret. You can generate one with: openssl rand -hex 20
