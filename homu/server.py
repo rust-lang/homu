@@ -30,6 +30,8 @@ import sys
 import os
 import traceback
 from retrying import retry
+import random
+import string
 
 import bottle
 bottle.BaseRequest.MEMFILE_MAX = 1024 * 1024 * 10
@@ -241,9 +243,12 @@ def rollup(user_gh, state, repo_label, repo_cfg, repo):
     base_ref = rollup_states[0].base_ref
 
     base_sha = repo.ref('heads/' + base_ref).object.sha
+    branch_name = 'rollup-' + ''.join(
+        random.choice(string.digits + string.ascii_lowercase) for _ in range(7)
+    )
     utils.github_set_ref(
         user_repo,
-        'heads/' + repo_cfg.get('branch', {}).get('rollup', 'rollup'),
+        'heads/' + branch_name,
         base_sha,
         force=True,
     )
@@ -265,8 +270,7 @@ def rollup(user_gh, state, repo_label, repo_cfg, repo):
         )
 
         try:
-            rollup = repo_cfg.get('branch', {}).get('rollup', 'rollup')
-            user_repo.merge(rollup, state.head_sha, merge_msg)
+            user_repo.merge(branch_name, state.head_sha, merge_msg)
         except github3.models.GitHubError as e:
             if e.code != 409:
                 raise
@@ -286,11 +290,10 @@ def rollup(user_gh, state, repo_label, repo_cfg, repo):
     body += '\nr? @ghost'
 
     try:
-        rollup = repo_cfg.get('branch', {}).get('rollup', 'rollup')
         pull = base_repo.create_pull(
             title,
             state.base_ref,
-            user_repo.owner.login + ':' + rollup,
+            user_repo.owner.login + ':' + branch_name,
             body,
         )
     except github3.models.GitHubError as e:
