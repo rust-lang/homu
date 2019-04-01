@@ -30,7 +30,8 @@ import sys
 import os
 import traceback
 from retrying import retry
-import uuid
+import random
+import string
 
 import bottle
 bottle.BaseRequest.MEMFILE_MAX = 1024 * 1024 * 10
@@ -242,7 +243,9 @@ def rollup(user_gh, state, repo_label, repo_cfg, repo):
     base_ref = rollup_states[0].base_ref
 
     base_sha = repo.ref('heads/' + base_ref).object.sha
-    branch_name = 'rollup-' + str(uuid.uuid4())
+    branch_name = 'rollup-' + ''.join(
+        random.choice(string.digits + string.ascii_lowercase) for _ in range(7)
+    )
     utils.github_set_ref(
         user_repo,
         'heads/' + branch_name,
