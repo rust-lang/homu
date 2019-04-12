@@ -793,8 +793,13 @@ def buildbot():
 
 
 def synch(user_gh, state, repo_label, repo_cfg, repo):
-    if not repo.is_collaborator(user_gh.user().login):
-        abort(400, 'You are not a collaborator')
+    try:
+        if not repo.is_collaborator(user_gh.user().login):
+            abort(400, 'You are not a collaborator')
+    except github3.GitHubError as e:
+        if e.code == 403:
+            abort(400, 'Homu does not have write access on the repository')
+        raise e
 
     Thread(target=synchronize, args=[repo_label, repo_cfg, g.logger,
                                      g.gh, g.states, g.repos, g.db,
