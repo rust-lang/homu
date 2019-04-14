@@ -792,6 +792,12 @@ def buildbot():
     return 'OK'
 
 
+@get('/assets/<file:path>')
+def server_static(file):
+    current_path = os.path.dirname(__file__)
+    return bottle.static_file(file, root=os.path.join(current_path, 'assets'))
+
+
 def synch(user_gh, state, repo_label, repo_cfg, repo):
     try:
         if not repo.is_collaborator(user_gh.user().login):
