@@ -21,6 +21,7 @@ setup(
     package_data={
         'homu': [
             'html/*.html',
+            'assets/*',
         ],
     },
     entry_points={
