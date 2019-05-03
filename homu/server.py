@@ -115,6 +115,7 @@ def queue(repo_label):
     lazy_debug(logger, lambda: 'repo_label: {}'.format(repo_label))
 
     single_repo_closed = None
+    treeclosed_src = None
     if repo_label == 'all':
         labels = g.repos.keys()
         multiple = True
@@ -124,6 +125,7 @@ def queue(repo_label):
         multiple = len(labels) > 1
         if repo_label in g.repos and g.repos[repo_label].treeclosed >= 0:
             single_repo_closed = g.repos[repo_label].treeclosed
+            treeclosed_src = g.repos[repo_label].treeclosed_src
         repo_url = 'https://github.com/{}/{}'.format(
             g.cfg['repo'][repo_label]['owner'],
             g.cfg['repo'][repo_label]['name'])
@@ -138,7 +140,7 @@ def queue(repo_label):
     pull_states = sorted(states)
     rows = []
     for state in pull_states:
-        treeclosed = (single_repo_closed or
+        treeclosed = (single_repo_closed and
                       state.priority < g.repos[state.repo_label].treeclosed)
         status_ext = ''
 
@@ -173,6 +175,7 @@ def queue(repo_label):
         repo_url=repo_url,
         repo_label=repo_label,
         treeclosed=single_repo_closed,
+        treeclosed_src=treeclosed_src,
         states=rows,
         oauth_client_id=g.cfg['github']['app_client_id'],
         total=len(pull_states),
@@ -181,6 +184,37 @@ def queue(repo_label):
         failed=len([x for x in pull_states if x.status == 'failure' or
                    x.status == 'error']),
         multiple=multiple,
+    )
+
+
+@get('/retry_log/<repo_label:path>')
+def retry_log(repo_label):
+    logger = g.logger.getChild('retry_log')
+
+    lazy_debug(logger, lambda: 'repo_label: {}'.format(repo_label))
+
+    repo_url = 'https://github.com/{}/{}'.format(
+        g.cfg['repo'][repo_label]['owner'],
+        g.cfg['repo'][repo_label]['name'],
+    )
+
+    db_query(
+        g.db,
+        '''
+            SELECT num, time, src, msg FROM retry_log
+            WHERE repo = ? ORDER BY time DESC
+        ''',
+        [repo_label],
+    )
+    logs = [
+        {'num': num, 'time': time, 'src': src, 'msg': msg}
+        for num, time, src, msg in g.db.fetchall()
+    ]
+
+    return g.tpls['retry_log'].render(
+        repo_url=repo_url,
+        repo_label=repo_label,
+        logs=logs,
     )
 
 
@@ -361,6 +395,7 @@ def github():
                     g.states,
                     realtime=True,
                     sha=original_commit_id,
+                    command_src=info['comment']['html_url'],
                 ):
                     state.save()
 
@@ -406,6 +441,9 @@ def github():
                         g.my_username,
                         g.db,
                         g.states,
+                        command_src=c.to_json()['html_url'],
+                        # FIXME switch to `c.html_url`
+                        #       after updating github3 to 1.3.0+
                     ) or found
 
                 status = ''
@@ -526,6 +564,7 @@ def github():
                 g.db,
                 g.states,
                 realtime=True,
+                command_src=info['comment']['html_url'],
             ):
                 state.save()
 
@@ -903,6 +942,7 @@ def start(cfg, states, queue_handler, repo_cfgs, repos, logger,
     tpls['index'] = env.get_template('index.html')
     tpls['queue'] = env.get_template('queue.html')
     tpls['build_res'] = env.get_template('build_res.html')
+    tpls['retry_log'] = env.get_template('retry_log.html')
 
     g.cfg = cfg
     g.states = states

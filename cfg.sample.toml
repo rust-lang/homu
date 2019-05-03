@@ -1,6 +1,10 @@
 # Priority values above max_priority will be refused.
 max_priority = 9001
 
+# How long to keep the retry log
+# Should be a negative interval of time recognized by SQLite3.
+retry_log_expire = '-42 days'
+
 [github]
 
 # Information for securely interacting with GitHub. These are found/generated
