@@ -382,6 +382,18 @@ class PullReqState:
         self.add_comment(comments.TimedOut())
         self.change_labels(LabelEvent.TIMED_OUT)
 
+    def record_retry_log(self, src, body):
+        # destroy ancient records
+        db_query(
+            self.db,
+            "DELETE FROM retry_log WHERE repo = ? AND time < date('now', ?)",
+            [self.repo_label, global_cfg.get('retry_log_expire', '-42 days')],
+        )
+        db_query(
+            self.db,
+            'INSERT INTO retry_log (repo, num, src, msg) VALUES (?, ?, ?, ?)',
+            [self.repo_label, self.num, src, body],
+        )
 
 def sha_cmp(short, full):
     return len(short) >= 4 and short == full[:len(short)]
@@ -625,6 +637,7 @@ def parse_commands(body, username, repo_label, repo_cfg, state, my_username,
             state.set_status('')
             if realtime:
                 event = LabelEvent.TRY if state.try_ else LabelEvent.APPROVED
+                state.record_retry_log(command_src, body)
                 state.change_labels(event)
 
         elif word in ['try', 'try-'] and realtime:
@@ -1640,6 +1653,17 @@ def main():
         treeclosed_src TEXT,
         UNIQUE (repo)
     )''')
+
+    db_query(db, '''CREATE TABLE IF NOT EXISTS retry_log (
+        repo TEXT NOT NULL,
+        num INTEGER NOT NULL,
+        time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        src TEXT NOT NULL,
+        msg TEXT NOT NULL
+    )''')
+    db_query(db, '''
+        CREATE INDEX IF NOT EXISTS retry_log_time_index ON retry_log (repo, time DESC)
+    ''')
 
     # manual DB migration :/
     try:

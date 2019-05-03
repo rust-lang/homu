@@ -179,6 +179,33 @@ def queue(repo_label):
         multiple=multiple,
     )
 
+@get('/retry_log/<repo_label:path>')
+def retry_log(repo_label):
+    logger = g.logger.getChild('retry_log')
+
+    lazy_debug(logger, lambda: 'repo_label: {}'.format(repo_label))
+
+    repo_url = 'https://github.com/{}/{}'.format(
+        g.cfg['repo'][repo_label]['owner'],
+        g.cfg['repo'][repo_label]['name'],
+    )
+
+    db_query(
+        g.db,
+        'SELECT num, time, src, msg FROM retry_log WHERE repo = ? ORDER BY time DESC',
+        [repo_label],
+    )
+    logs = [
+        {'num': num, 'time': time, 'src': src, 'msg': msg}
+        for num, time, src, msg in g.db.fetchall()
+    ]
+
+    return g.tpls['retry_log'].render(
+        repo_url=repo_url,
+        repo_label=repo_label,
+        logs=logs,
+    )
+
 
 @get('/callback')
 def callback():
@@ -903,6 +930,7 @@ def start(cfg, states, queue_handler, repo_cfgs, repos, logger,
     tpls['index'] = env.get_template('index.html')
     tpls['queue'] = env.get_template('queue.html')
     tpls['build_res'] = env.get_template('build_res.html')
+    tpls['retry_log'] = env.get_template('retry_log.html')
 
     g.cfg = cfg
     g.states = states

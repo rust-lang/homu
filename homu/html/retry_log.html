@@ -1,0 +1,42 @@
+<!doctype html>
+<html>
+    <head>
+        <meta charset="utf-8">
+        <title>Homu retry log {{repo_label}}</title>
+        <style>
+            * { font-family: sans-serif; }
+            h1 { font-size: 20px; }
+            h2 { font-size: 16px; }
+            p { font-size: 15px; }
+            pre { margin: 0; }
+
+            table { border-collapse: collapse; }
+            td, th { border: 2px solid white; padding: 5px; font-size: 13px; vertical-align: top; }
+            tr:nth-child(even) { background: #ddd; }
+        </style>
+    </head>
+    <body>
+        <h1>Homu retry log - <a href="{{repo_url}}" target="_blank">{{repo_label}}</a></h1>
+
+        <table id="results">
+            <thead>
+                <tr>
+                    <th>Time (UTC)</th>
+                    <th>PR</th>
+                    <th>Message</th>
+                </tr>
+            </thead>
+
+            <tbody>
+                {% for log in logs %}
+                <tr>
+                    <td>{{log.time}}</td>
+                    <td><a href="{{log.src}}">{{log.num}}</a></td>
+                    <td><pre>{{log.msg}}</pre></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+    </body>
+</html>
