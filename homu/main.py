@@ -102,7 +102,10 @@ class Repository:
         if value > 0:
             db_query(
                 self.db,
-                'INSERT INTO repos (repo, treeclosed, treeclosed_src) VALUES (?, ?, ?)',
+                '''
+                    INSERT INTO repos (repo, treeclosed, treeclosed_src)
+                    VALUES (?, ?, ?)
+                ''',
                 [self.repo_label, value, src]
             )
 
@@ -394,6 +397,7 @@ class PullReqState:
             'INSERT INTO retry_log (repo, num, src, msg) VALUES (?, ?, ?, ?)',
             [self.repo_label, self.num, src, body],
         )
+
 
 def sha_cmp(short, full):
     return len(short) >= 4 and short == full[:len(short)]
@@ -1510,7 +1514,8 @@ def synchronize(repo_label, repo_cfg, logger, gh, states, repos, db, mergeable_q
                     states,
                     sha=comment.original_commit_id,
                     command_src=comment.to_json()['html_url'],
-                    # FIXME switch to `comment.html_url` after updating github3 to 1.3.0+
+                    # FIXME switch to `comment.html_url`
+                    #       after updating github3 to 1.3.0+
                 )
 
         for comment in pull.iter_issue_comments():
@@ -1524,7 +1529,8 @@ def synchronize(repo_label, repo_cfg, logger, gh, states, repos, db, mergeable_q
                 db,
                 states,
                 command_src=comment.to_json()['html_url'],
-                # FIXME switch to `comment.html_url` after updating github3 to 1.3.0+
+                # FIXME switch to `comment.html_url`
+                #       after updating github3 to 1.3.0+
             )
 
         saved_state = saved_states.get(pull.number)
@@ -1662,7 +1668,8 @@ def main():
         msg TEXT NOT NULL
     )''')
     db_query(db, '''
-        CREATE INDEX IF NOT EXISTS retry_log_time_index ON retry_log (repo, time DESC)
+        CREATE INDEX IF NOT EXISTS retry_log_time_index ON retry_log
+        (repo, time DESC)
     ''')
 
     # manual DB migration :/

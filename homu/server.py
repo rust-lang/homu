@@ -179,6 +179,7 @@ def queue(repo_label):
         multiple=multiple,
     )
 
+
 @get('/retry_log/<repo_label:path>')
 def retry_log(repo_label):
     logger = g.logger.getChild('retry_log')
@@ -192,7 +193,10 @@ def retry_log(repo_label):
 
     db_query(
         g.db,
-        'SELECT num, time, src, msg FROM retry_log WHERE repo = ? ORDER BY time DESC',
+        '''
+            SELECT num, time, src, msg FROM retry_log
+            WHERE repo = ? ORDER BY time DESC
+        ''',
         [repo_label],
     )
     logs = [
@@ -431,7 +435,8 @@ def github():
                         g.db,
                         g.states,
                         command_src=c.to_json()['html_url'],
-                        # FIXME switch to `c.html_url` after updating github3 to 1.3.0+
+                        # FIXME switch to `c.html_url`
+                        #       after updating github3 to 1.3.0+
                     ) or found
 
                 status = ''
