@@ -43,6 +43,12 @@ class G:
 
 g = G()
 
+ROLLUP_STR = {
+    -1: 'never',
+    0: '',
+    1: 'always',
+}
+
 
 def find_state(sha):
     for repo_label, repo_states in g.states.items():
@@ -145,7 +151,8 @@ def queue(repo_label):
         rows.append({
             'status': state.get_status(),
             'status_ext': status_ext,
-            'priority': 'rollup' if state.rollup else state.priority,
+            'priority': state.priority,
+            'rollup': ROLLUP_STR.get(state.rollup, ''),
             'url': 'https://github.com/{}/{}/pull/{}'.format(state.owner,
                                                              state.name,
                                                              state.num),
@@ -170,7 +177,7 @@ def queue(repo_label):
         oauth_client_id=g.cfg['github']['app_client_id'],
         total=len(pull_states),
         approved=len([x for x in pull_states if x.approved_by]),
-        rolled_up=len([x for x in pull_states if x.rollup]),
+        rolled_up=len([x for x in pull_states if x.rollup > 0]),
         failed=len([x for x in pull_states if x.status == 'failure' or
                    x.status == 'error']),
         multiple=multiple,

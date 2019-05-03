@@ -19,8 +19,8 @@
             .pending { background-color: #F0DE57; }
             .approved { background-color: #85DB7B; }
 
-            .yes { color: green; }
-            .no { color: red; }
+            .yes, .rollup_always { color: green; }
+            .no, .rollup_never { color: red; }
 
             .sorting_asc:after { content: " ▲"; }
             .sorting_desc:after { content: " ▼"; }
@@ -86,6 +86,7 @@
                     <th>Assignee</th>
                     <th>Approved by</th>
                     <th>Priority</th>
+                    <th>Rollup</th>
                 </tr>
             </thead>
 
@@ -111,6 +112,7 @@
                     <td>{{state.assignee}}</td>
                     <td>{{state.approved_by}}</td>
                     <td>{{state.priority}}</td>
+                    <td class="rollup_{{state.rollup}}">{{state.rollup}}</td>
                 </tr>
                 {% endfor %}
             </tbody>
