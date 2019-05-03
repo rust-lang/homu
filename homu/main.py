@@ -69,6 +69,7 @@ def db_query(db, *args):
 
 class Repository:
     treeclosed = -1
+    treecloesd_src = None
     gh = None
     label = None
     db = None
@@ -79,17 +80,20 @@ class Repository:
         self.db = db
         db_query(
             db,
-            'SELECT treeclosed FROM repos WHERE repo = ?',
+            'SELECT treeclosed, treeclosed_src FROM repos WHERE repo = ?',
             [repo_label]
         )
         row = db.fetchone()
         if row:
             self.treeclosed = row[0]
+            self.treecloesd_src = row[1]
         else:
             self.treeclosed = -1
+            self.treeclosed_src = None
 
-    def update_treeclosed(self, value):
+    def update_treeclosed(self, value, src):
         self.treeclosed = value
+        self.treeclosed_src = src
         db_query(
             self.db,
             'DELETE FROM repos where repo = ?',
@@ -98,8 +102,8 @@ class Repository:
         if value > 0:
             db_query(
                 self.db,
-                'INSERT INTO repos (repo, treeclosed) VALUES (?, ?)',
-                [self.repo_label, value]
+                'INSERT INTO repos (repo, treeclosed, treeclosed_src) VALUES (?, ?, ?)',
+                [self.repo_label, value, src]
             )
 
     def __lt__(self, other):
@@ -340,8 +344,8 @@ class PullReqState:
             title = merged_prefix + title
             issue.edit(title=title)
 
-    def change_treeclosed(self, value):
-        self.repos[self.repo_label].update_treeclosed(value)
+    def change_treeclosed(self, value, src):
+        self.repos[self.repo_label].update_treeclosed(value, src)
 
     def blocked_by_closed_tree(self):
         treeclosed = self.repos[self.repo_label].treeclosed
@@ -414,7 +418,7 @@ PORTAL_TURRET_IMAGE = "https://cloud.githubusercontent.com/assets/1617736/222229
 
 
 def parse_commands(body, username, repo_label, repo_cfg, state, my_username,
-                   db, states, *, realtime=False, sha=''):
+                   db, states, *, realtime=False, sha='', command_src=''):
     global global_cfg
     state_changed = False
 
@@ -695,14 +699,14 @@ def parse_commands(body, username, repo_label, repo_cfg, state, my_username,
                 continue
             try:
                 treeclosed = int(word[len('treeclosed='):])
-                state.change_treeclosed(treeclosed)
+                state.change_treeclosed(treeclosed, command_src)
             except ValueError:
                 pass
             state.save()
         elif word == 'treeclosed-':
             if not _reviewer_auth_verified():
                 continue
-            state.change_treeclosed(-1)
+            state.change_treeclosed(-1, None)
             state.save()
         elif 'hooks' in global_cfg:
             hook_found = False
@@ -1492,6 +1496,8 @@ def synchronize(repo_label, repo_cfg, logger, gh, states, repos, db, mergeable_q
                     db,
                     states,
                     sha=comment.original_commit_id,
+                    command_src=comment.to_json()['html_url'],
+                    # FIXME switch to `comment.html_url` after updating github3 to 1.3.0+
                 )
 
         for comment in pull.iter_issue_comments():
@@ -1504,6 +1510,8 @@ def synchronize(repo_label, repo_cfg, logger, gh, states, repos, db, mergeable_q
                 my_username,
                 db,
                 states,
+                command_src=comment.to_json()['html_url'],
+                # FIXME switch to `comment.html_url` after updating github3 to 1.3.0+
             )
 
         saved_state = saved_states.get(pull.number)
@@ -1629,8 +1637,16 @@ def main():
     db_query(db, '''CREATE TABLE IF NOT EXISTS repos (
         repo TEXT NOT NULL,
         treeclosed INTEGER NOT NULL,
+        treeclosed_src TEXT,
         UNIQUE (repo)
     )''')
+
+    # manual DB migration :/
+    try:
+        db_query(db, 'SELECT treeclosed_src FROM repos LIMIT 0')
+    except sqlite3.OperationalError:
+        db_query(db, 'ALTER TABLE repos ADD COLUMN treeclosed_src TEXT')
+
     for repo_label, repo_cfg in cfg['repo'].items():
         repo_cfgs[repo_label] = repo_cfg
         repo_labels[repo_cfg['owner'], repo_cfg['name']] = repo_label

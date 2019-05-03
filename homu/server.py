@@ -109,6 +109,7 @@ def queue(repo_label):
     lazy_debug(logger, lambda: 'repo_label: {}'.format(repo_label))
 
     single_repo_closed = None
+    treeclosed_src = None
     if repo_label == 'all':
         labels = g.repos.keys()
         multiple = True
@@ -118,6 +119,7 @@ def queue(repo_label):
         multiple = len(labels) > 1
         if repo_label in g.repos and g.repos[repo_label].treeclosed >= 0:
             single_repo_closed = g.repos[repo_label].treeclosed
+            treeclosed_src = g.repos[repo_label].treeclosed_src
         repo_url = 'https://github.com/{}/{}'.format(
             g.cfg['repo'][repo_label]['owner'],
             g.cfg['repo'][repo_label]['name'])
@@ -132,7 +134,7 @@ def queue(repo_label):
     pull_states = sorted(states)
     rows = []
     for state in pull_states:
-        treeclosed = (single_repo_closed or
+        treeclosed = (single_repo_closed and
                       state.priority < g.repos[state.repo_label].treeclosed)
         status_ext = ''
 
@@ -166,6 +168,7 @@ def queue(repo_label):
         repo_url=repo_url,
         repo_label=repo_label,
         treeclosed=single_repo_closed,
+        treeclosed_src=treeclosed_src,
         states=rows,
         oauth_client_id=g.cfg['github']['app_client_id'],
         total=len(pull_states),
@@ -354,6 +357,7 @@ def github():
                     g.states,
                     realtime=True,
                     sha=original_commit_id,
+                    command_src=info['comment']['html_url'],
                 ):
                     state.save()
 
@@ -399,6 +403,8 @@ def github():
                         g.my_username,
                         g.db,
                         g.states,
+                        command_src=c.to_json()['html_url'],
+                        # FIXME switch to `c.html_url` after updating github3 to 1.3.0+
                     ) or found
 
                 status = ''
@@ -519,6 +525,7 @@ def github():
                 g.db,
                 g.states,
                 realtime=True,
+                command_src=info['comment']['html_url'],
             ):
                 state.save()
 

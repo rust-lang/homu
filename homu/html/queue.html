@@ -32,7 +32,7 @@
         </style>
     </head>
     <body>
-        <h1>Homu queue - {% if repo_url %}<a href="{{repo_url}}" target="_blank">{{repo_label}}</a>{% else %}{{repo_label}}{% endif %} {% if treeclosed %} [TREE CLOSED below priority {{treeclosed}}] {% endif %}</h2>
+        <h1>Homu queue - {% if repo_url %}<a href="{{repo_url}}" target="_blank">{{repo_label}}</a>{% else %}{{repo_label}}{% endif %} {% if treeclosed %} [<a href="{{treeclosed_src}}">TREE CLOSED</a> below priority {{treeclosed}}] {% endif %}</h2>
 
         <p>
             <button type="button" id="expand-rollup">Create a rollup</button>
