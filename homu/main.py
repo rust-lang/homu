@@ -41,6 +41,14 @@ DEFAULT_TEST_TIMEOUT = 3600 * 10
 
 global_cfg = {}
 
+WORDS_TO_ROLLUP = {
+    'rollup-': 0,
+    'rollup': 1,
+    'rollup=maybe': 0,
+    'rollup=never': -1,
+    'rollup=always': 1,
+}
+
 
 @contextmanager
 def buildbot_sess(repo_cfg):
@@ -109,7 +117,7 @@ class Repository:
 class PullReqState:
     num = 0
     priority = 0
-    rollup = False
+    rollup = 0
     title = ''
     body = ''
     head_ref = ''
@@ -165,7 +173,7 @@ class PullReqState:
             STATUS_TO_PRIORITY.get(self.get_status(), -1),
             1 if self.mergeable is False else 0,
             0 if self.approved_by else 1,
-            1 if self.rollup else 0,
+            self.rollup,
             -self.priority,
             self.num,
         ]
@@ -645,10 +653,10 @@ def parse_commands(body, username, repo_label, repo_cfg, state, my_username,
                 # any meaningful labeling events.
                 state.change_labels(LabelEvent.TRY)
 
-        elif word in ['rollup', 'rollup-']:
+        elif word in WORDS_TO_ROLLUP:
             if not _try_auth_verified():
                 continue
-            state.rollup = word == 'rollup'
+            state.rollup = WORDS_TO_ROLLUP[word]
 
             state.save()
 
@@ -1653,7 +1661,7 @@ def main():
             state.approved_by = approved_by
             state.priority = int(priority)
             state.try_ = bool(try_)
-            state.rollup = bool(rollup)
+            state.rollup = rollup
             state.delegate = delegate
             builders = []
             if merge_sha:
