@@ -4,23 +4,95 @@
         <meta charset="utf-8">
         <title>Homu queue - {{repo_label}} {% if treeclosed %} [TREE CLOSED] {% endif %}</title>
         <style>
+            @keyframes barber-pole {
+                /* This animation is used to make the status indicator next to
+                   pending pulls look like a barber poll. We do that with a
+                   diagonal linear gradient. CSS does not allow us to animate a
+                   gradient, so instead we make the indicator a little taller
+                   than shown, and then animate the whole thing upward. */
+                from{
+                    transform: translate(0, 0);
+                }
+                to {
+                    /* The magic number 11.314 is sqrt(8^2 + 8^2), based on how
+                       far vertically it takes to repeat a 45 degree gradient
+                       that is 8 pixels long before it repeats. */
+                    transform: translate(0, -11.314px);
+                }
+            }
             * { font-family: sans-serif; }
             h1 { font-size: 20px; }
             h2 { font-size: 16px; }
             p { font-size: 15px; }
 
             table { border-collapse: collapse; }
-            td, th { border: 2px solid white; padding: 5px; font-size: 13px; }
-            tr:nth-child(even) { background: #ddd; }
+            td, th { border-bottom: 1px solid #ddd; padding: 5px 6px; font-size: 13px; text-align: left; vertical-align: baseline; }
+            tr:nth-child(even) { background: #eee; }
 
+            a {
+                text-decoration: none;
+            }
+            a:hover {
+                text-decoration: underline;
+            }
+
+            .status {
+                position: relative;
+                overflow: hidden;
+                padding-left: 16px;
+                white-space: nowrap;
+            }
+            .status:before {
+                content: " ";
+                position: absolute;
+                display: block;
+                left: 6px;
+                width: 6px;
+                top: 0;
+                bottom: 0;
+            }
             .treeclosed { color: grey }
-            .success { background-color: #80C0F0; }
-            .failure, .error { background-color: #F08080; }
-            .pending { background-color: #F0DE57; }
-            .approved { background-color: #85DB7B; }
+            .success:before { background-color: #80C0F0; }
+            .failure:before, .error::before { background-color: #F08080; }
+            .approved:before { background-color: #85DB7B; }
+            .pending:before {
+                /* Give the pending state a little bit of animation to make it
+                   clear that these items are the ones that are being tested
+                   right now. */
+                bottom: -20px;
+                background-color: #F0DE57;
+                background-image: repeating-linear-gradient(135deg, #F0DE57 0, #F0DE57 4px, #FBEE97 4px, #FBEE97 8px, #F0DE57 0);
+                animation: barber-pole 1s linear infinite;
+            }
+            .number { text-align: right; }
 
-            .yes, .rollup_always { color: green; }
-            .no, .rollup_never { color: red; }
+            /* Make a non-zero priority stand out by making 0 normal and gray,
+               and non-zero bold and black. */
+            .priority { text-align: right; font-weight: bold; }
+            .priority[data-priority="0"] { font-weight: normal; color: #999; }
+
+            .yes, .rollup_always, .no, .rollup_never {
+                white-space: nowrap;
+            }
+            .yes:before, .rollup_always:before, .no:before, .rollup_never:before {
+                content: "";
+                display: inline-block;
+                width: 0.4em;
+                height: 0.4em;
+                border-radius: 50% 50%;
+                margin-right: 0.3em;
+                border: 1px solid transparent;
+            }
+            .yes, .rollup_always { color: #004200; }
+            .yes:before, .rollup_always:before {
+                background: #01ce01;
+                border-color: #016c01;
+            }
+            .no, .rollup_never { color: #660000; }
+            .no:before, .rollup_never:before {
+                background: #f97070;
+                border-color: #ab0a0a;
+            }
 
             .sorting_asc:after { content: " ▲"; }
             .sorting_desc:after { content: " ▼"; }
@@ -64,7 +136,7 @@
         <p>
             {{ total }} total, {{ approved }} approved, {{ rolled_up }} rolled up, {{ failed }} failed
             /
-            <label><input type="checkbox" id="auto_reload">Auto reload</label>
+            <label><input type="checkbox" id="auto_reload"> Auto reload</label>
             /
             <input type="search" id="search" placeholder="Search">
             <button type="button" id="reset">Reset</button>
@@ -79,13 +151,13 @@
                     <th>Repository</th>
                     {% endif %}
                     <th>#</th>
-                    <th>Status</th>
+                    <th class="status">Status</th>
                     <th>Mergeable</th>
                     <th>Title</th>
                     <th>Head ref</th>
                     <th>Assignee</th>
                     <th>Approved by</th>
-                    <th>Priority</th>
+                    <th class="priority">Priority</th>
                     <th>Rollup</th>
                 </tr>
             </thead>
@@ -99,7 +171,7 @@
                     <td><a href="{{state.repo_url}}">{{state.repo_label}}</a></td>
                     {% endif %}
                     <td><a href="{{state.url}}">{{state.num}}</a></td>
-                    <td class="{{state.status}}">
+                    <td class="status {{state.status}}">
                         {% if state.status == "pending" or state.status == "failure" or state.status == "success" %}
                             <a href="../results/{{state.repo_label}}/{{state.num}}">{{state.status}}{{state.status_ext}}</a>
                         {% else %}
@@ -111,7 +183,7 @@
                     <td>{{state.head_ref}}</td>
                     <td>{{state.assignee}}</td>
                     <td>{{state.approved_by}}</td>
-                    <td>{{state.priority}}</td>
+                    <td class="priority" data-priority="{{state.priority}}">{{state.priority}}</td>
                     <td class="rollup_{{state.rollup}}">{{state.rollup}}</td>
                 </tr>
                 {% endfor %}
