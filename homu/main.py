@@ -6,6 +6,7 @@ import re
 import functools
 from . import comments
 from . import utils
+from .parse_issue_comment import parse_issue_comment
 from .auth import verify as verify_auth
 from .utils import lazy_debug
 import logging
@@ -15,7 +16,6 @@ import traceback
 import sqlite3
 import requests
 from contextlib import contextmanager
-from itertools import chain
 from queue import Queue
 import os
 import sys
@@ -469,28 +469,20 @@ def parse_commands(body, username, repo_label, repo_cfg, state, my_username,
         my_username,
     )
 
-    words = list(chain.from_iterable(re.findall(r'\S+', x) for x in body.splitlines() if '@' + my_username in x))  # noqa
-    if words[1:] == ["are", "you", "still", "there?"] and realtime:
-        state.add_comment(
-            ":cake: {}\n\n![]({})".format(
-                random.choice(PORTAL_TURRET_DIALOG), PORTAL_TURRET_IMAGE)
-            )
-    for i, word in reversed(list(enumerate(words))):
+    hooks = []
+    if 'hooks' in global_cfg:
+        hooks = list(global_cfg['hooks'].keys())
+
+    commands = parse_issue_comment(username, body, sha, my_username, hooks)
+
+    for command in commands:
         found = True
-        if word == 'r+' or word.startswith('r='):
+        if command.action == 'approve':
             if not _reviewer_auth_verified():
                 continue
 
-            if not sha and i + 1 < len(words):
-                cur_sha = sha_or_blank(words[i + 1])
-            else:
-                cur_sha = sha
-
-            approver = word[len('r='):] if word.startswith('r=') else username
-
-            # Ignore "r=me"
-            if approver == 'me':
-                continue
+            approver = command.actor
+            cur_sha = command.commit
 
             # Ignore WIP PRs
             is_wip = False
@@ -582,7 +574,7 @@ def parse_commands(body, username, repo_label, repo_cfg, state, my_username,
                         )
                     state.change_labels(LabelEvent.APPROVED)
 
-        elif word == 'r-':
+        elif command.action == 'unapprove':
             if not verify_auth(username, repo_label, repo_cfg, state,
                                AuthState.REVIEWER, realtime, my_username):
                 continue
@@ -592,14 +584,12 @@ def parse_commands(body, username, repo_label, repo_cfg, state, my_username,
             if realtime:
                 state.change_labels(LabelEvent.REJECTED)
 
-        elif word.startswith('p='):
+        elif command.action == 'prioritize':
             if not verify_auth(username, repo_label, repo_cfg, state,
                                AuthState.TRY, realtime, my_username):
                 continue
-            try:
-                pvalue = int(word[len('p='):])
-            except ValueError:
-                continue
+
+            pvalue = command.priority
 
             if pvalue > global_cfg['max_priority']:
                 if realtime:
@@ -611,12 +601,12 @@ def parse_commands(body, username, repo_label, repo_cfg, state, my_username,
             state.priority = pvalue
             state.save()
 
-        elif word.startswith('delegate='):
+        elif command.action == 'delegate':
             if not verify_auth(username, repo_label, repo_cfg, state,
                                AuthState.REVIEWER, realtime, my_username):
                 continue
 
-            state.delegate = word[len('delegate='):]
+            state.delegate = command.delegate_to
             state.save()
 
             if realtime:
@@ -625,14 +615,14 @@ def parse_commands(body, username, repo_label, repo_cfg, state, my_username,
                     .format(state.delegate)
                 )
 
-        elif word == 'delegate-':
+        elif command.action == 'undelegate':
             # TODO: why is this a TRY?
             if not _try_auth_verified():
                 continue
             state.delegate = ''
             state.save()
 
-        elif word == 'delegate+':
+        elif command.action == 'delegate-author':
             if not _reviewer_auth_verified():
                 continue
 
@@ -645,7 +635,7 @@ def parse_commands(body, username, repo_label, repo_cfg, state, my_username,
                     .format(state.delegate)
                 )
 
-        elif word == 'retry' and realtime:
+        elif command.action == 'retry' and realtime:
             if not _try_auth_verified():
                 continue
             state.set_status('')
@@ -654,7 +644,7 @@ def parse_commands(body, username, repo_label, repo_cfg, state, my_username,
                 state.record_retry_log(command_src, body)
                 state.change_labels(event)
 
-        elif word in ['try', 'try-'] and realtime:
+        elif command.action in ['try', 'untry'] and realtime:
             if not _try_auth_verified():
                 continue
             if state.status == '' and state.approved_by:
@@ -665,7 +655,7 @@ def parse_commands(body, username, repo_label, repo_cfg, state, my_username,
                 )
                 continue
 
-            state.try_ = word == 'try'
+            state.try_ = command.action == 'try'
 
             state.merge_sha = ''
             state.init_build_res([])
@@ -676,14 +666,14 @@ def parse_commands(body, username, repo_label, repo_cfg, state, my_username,
                 # any meaningful labeling events.
                 state.change_labels(LabelEvent.TRY)
 
-        elif word in WORDS_TO_ROLLUP:
+        elif command.action == 'rollup':
             if not _try_auth_verified():
                 continue
-            state.rollup = WORDS_TO_ROLLUP[word]
+            state.rollup = command.rollup_value
 
             state.save()
 
-        elif word == 'force' and realtime:
+        elif command.action == 'force' and realtime:
             if not _try_auth_verified():
                 continue
             if 'buildbot' in repo_cfg:
@@ -712,60 +702,57 @@ def parse_commands(body, username, repo_label, repo_cfg, state, my_username,
                     ':bomb: Buildbot returned an error: `{}`'.format(err)
                 )
 
-        elif word == 'clean' and realtime:
+        elif command.action == 'clean' and realtime:
             if not _try_auth_verified():
                 continue
             state.merge_sha = ''
             state.init_build_res([])
 
             state.save()
-        elif (word == 'hello?' or word == 'ping') and realtime:
-            state.add_comment(":sleepy: I'm awake I'm awake")
-        elif word.startswith('treeclosed='):
+
+        elif command.action == 'ping' and realtime:
+            if command.ping_type == 'portal':
+                state.add_comment(
+                    ":cake: {}\n\n![]({})".format(
+                        random.choice(PORTAL_TURRET_DIALOG),
+                        PORTAL_TURRET_IMAGE)
+                    )
+            else:
+                state.add_comment(":sleepy: I'm awake I'm awake")
+
+        elif command.action == 'treeclosed':
             if not _reviewer_auth_verified():
                 continue
-            try:
-                treeclosed = int(word[len('treeclosed='):])
-                state.change_treeclosed(treeclosed, command_src)
-            except ValueError:
-                pass
+            state.change_treeclosed(command.treeclosed_value, command_src)
             state.save()
-        elif word == 'treeclosed-':
+
+        elif command.action == 'untreeclosed':
             if not _reviewer_auth_verified():
                 continue
             state.change_treeclosed(-1, None)
             state.save()
-        elif 'hooks' in global_cfg:
-            hook_found = False
-            for hook in global_cfg['hooks']:
-                hook_cfg = global_cfg['hooks'][hook]
-                if hook_cfg['realtime'] and not realtime:
+
+        elif command.action == 'hook':
+            hook = command.hook_name
+            hook_cfg = global_cfg['hooks'][hook]
+            if hook_cfg['realtime'] and not realtime:
+                continue
+            if hook_cfg['access'] == "reviewer":
+                if not _reviewer_auth_verified():
                     continue
-                if word == hook or word.startswith('%s=' % hook):
-                    if hook_cfg['access'] == "reviewer":
-                        if not _reviewer_auth_verified():
-                            continue
-                    else:
-                        if not _try_auth_verified():
-                            continue
-                    hook_found = True
-                    extra_data = ""
-                    if word.startswith('%s=' % hook):
-                        extra_data = word.split("=")[1]
-                    Thread(
-                        target=handle_hook_response,
-                        args=[state, hook_cfg, body, extra_data]
-                    ).start()
-            if not hook_found:
-                found = False
+            else:
+                if not _try_auth_verified():
+                    continue
+            Thread(
+                target=handle_hook_response,
+                args=[state, hook_cfg, body, command.hook_extra]
+            ).start()
 
         else:
             found = False
 
         if found:
             state_changed = True
-
-            words[i] = ''
 
     return state_changed
 
