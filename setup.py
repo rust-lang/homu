@@ -5,6 +5,7 @@ setup(
     version='0.3.0',
     author='Barosl Lee',
     url='https://github.com/barosl/homu',
+    test_suite='homu.tests',
     description=('A bot that integrates with GitHub '
                  'and your favorite continuous integration service'),
 
@@ -17,6 +18,12 @@ setup(
         'bottle',
         'waitress',
         'retrying',
+    ],
+    setup_requires=[
+        'pytest-runner',
+    ],
+    tests_require=[
+        'pytest',
     ],
     package_data={
         'homu': [
