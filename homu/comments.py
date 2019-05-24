@@ -18,6 +18,59 @@ class Comment:
         return json.dumps(out, separators=(',', ':'))
 
 
+class Approved(Comment):
+    def __init__(self, bot=None, **args):
+        # Because homu needs to leave a comment for itself to kick off a build,
+        # we need to know the correct botname to use. However, we don't want to
+        # save that botname in our state JSON. So we need a custom constructor
+        # to grab the botname and delegate the rest of the keyword args to the
+        # Comment constructor.
+        super().__init__(**args)
+        self.bot = bot
+
+    params = ["sha", "approver"]
+
+    def render(self):
+        # The comment here is required because Homu wants a full, unambiguous,
+        # pinned commit hash to kick off the build, and this note-to-self is
+        # how it gets it. This is to safeguard against situations where Homu
+        # reloads and another commit has been pushed since the approval.
+        message = ":pushpin: Commit {sha} has been " + \
+            "approved by `{approver}`\n\n" + \
+            "<!-- @{bot} r={approver} {sha} -->"
+        return message.format(
+            sha=self.sha,
+            approver=self.approver,
+            bot=self.bot
+        )
+
+
+class ApprovalIgnoredWip(Comment):
+    def __init__(self, wip_keyword=None, **args):
+        # We want to use the wip keyword in the message, but not in the json
+        # blob.
+        super().__init__(**args)
+        self.wip_keyword = wip_keyword
+
+    params = ["sha"]
+
+    def render(self):
+        message = ':clipboard:' + \
+            ' Looks like this PR is still in progress,' + \
+            ' ignoring approval.\n\n' + \
+            'Hint: Remove **{wip_keyword}** from this PR\'s title when' + \
+            ' it is ready for review.'
+        return message.format(wip_keyword=self.wip_keyword)
+
+
+class Delegated(Comment):
+    params = ["delegator", "delegate"]
+
+    def render(self):
+        message = ':v: @{} can now approve this pull request'
+        return message.format(self.delegate)
+
+
 class BuildStarted(Comment):
     params = ["head_sha", "merge_sha"]
 

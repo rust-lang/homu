@@ -497,13 +497,10 @@ def parse_commands(body, username, repo_label, repo_cfg, state, my_username,
             for wip_kw in ['WIP', 'TODO', '[WIP]', '[TODO]', '[DO NOT MERGE]']:
                 if state.title.upper().startswith(wip_kw):
                     if realtime:
-                        state.add_comment((
-                            ':clipboard:'
-                            ' Looks like this PR is still in progress,'
-                            ' ignoring approval.\n\n'
-                            'Hint: Remove **{}** from this PR\'s title when'
-                            ' it is ready for review.'
-                        ).format(wip_kw))
+                        state.add_comment(comments.ApprovalIgnoredWip(
+                            sha=state.head_sha,
+                            wip_keyword=wip_kw,
+                        ))
                     is_wip = True
                     break
             if is_wip:
@@ -565,14 +562,10 @@ def parse_commands(body, username, repo_label, repo_cfg, state, my_username,
                         .format(msg, state.head_sha)
                     )
                 else:
-                    state.add_comment(
-                        ':pushpin: Commit {} has been approved by `{}`\n\n<!-- @{} r={} {} -->'  # noqa
-                        .format(
-                            state.head_sha,
-                            approver,
-                            my_username,
-                            approver,
-                            state.head_sha,
+                    state.add_comment(comments.Approved(
+                        sha=state.head_sha,
+                        approver=approver,
+                        bot=my_username,
                     ))
                     treeclosed = state.blocked_by_closed_tree()
                     if treeclosed:
@@ -620,10 +613,10 @@ def parse_commands(body, username, repo_label, repo_cfg, state, my_username,
             state.save()
 
             if realtime:
-                state.add_comment(
-                    ':v: @{} can now approve this pull request'
-                    .format(state.delegate)
-                )
+                state.add_comment(comments.Delegated(
+                    delegator=username,
+                    delegate=state.delegate
+                ))
 
         elif word == 'delegate-':
             # TODO: why is this a TRY?
@@ -640,10 +633,10 @@ def parse_commands(body, username, repo_label, repo_cfg, state, my_username,
             state.save()
 
             if realtime:
-                state.add_comment(
-                    ':v: @{} can now approve this pull request'
-                    .format(state.delegate)
-                )
+                state.add_comment(comments.Delegated(
+                    delegator=username,
+                    delegate=state.delegate
+                ))
 
         elif word == 'retry' and realtime:
             if not _try_auth_verified():
