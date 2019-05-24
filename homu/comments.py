@@ -31,9 +31,10 @@ class Approved(Comment):
     params = ["sha", "approver"]
 
     def render(self):
-        # The comment here is apparently required because Homu seems to use
-        # this note-to-self comment to kick off the build. Presumably because
-        # it contains the full commit hash?
+        # The comment here is required because Homu wants a full, unambiguous,
+        # pinned commit hash to kick off the build, and this note-to-self is
+        # how it gets it. This is to safeguard against situations where Homu
+        # reloads and another commit has been pushed since the approval.
         message = ":pushpin: Commit {sha} has been " + \
             "approved by `{approver}`\n\n" + \
             "<!-- @{bot} r={approver} {sha} -->"
