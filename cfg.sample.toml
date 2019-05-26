@@ -158,6 +158,10 @@ name = "Travis CI - Branch"
 #
 # String name of the Checks run.
 #name = ""
+#
+# String name of the Checks run used for try runs.
+# If the field is omitted the same name as the auto build will be used.
+#try_name = ""
 
 # Use buildbot for running tests
 #[repo.NAME.buildbot]

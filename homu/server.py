@@ -604,7 +604,10 @@ def github():
         checks_name = None
         if 'checks' in repo_cfg:
             for name, value in repo_cfg['checks'].items():
-                if 'name' in value and value['name'] == current_run_name:
+                if state.try_ and 'try_name' in value:
+                    if value['try_name'] == current_run_name:
+                        checks_name = name
+                elif 'name' in value and value['name'] == current_run_name:
                     checks_name = name
         if checks_name is None:
             return 'OK'

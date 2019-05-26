@@ -1230,7 +1230,11 @@ def start_build(state, repo_cfgs, buildbot_slots, logger, db, git_cfg):
         if found_travis_context and len(builders) == 1:
             can_try_travis_exemption = True
     if 'checks' in repo_cfg:
-        builders += ['checks-' + key for key, value in repo_cfg['checks'].items() if 'name' in value]  # noqa
+        builders += [
+            'checks-' + key
+            for key, value in repo_cfg['checks'].items()
+            if 'name' in value or (state.try_ and 'try_name' in value)
+        ]
         only_status_builders = False
 
     if len(builders) == 0:
