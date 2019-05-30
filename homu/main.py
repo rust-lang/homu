@@ -665,6 +665,10 @@ def parse_commands(body, username, repo_label, repo_cfg, state, my_username,
 
             state.save()
             if realtime and state.try_:
+                # If we've tried before, the status will be 'success', and this
+                # new try will not be picked up. Set the status back to ''
+                # so the try will be run again.
+                state.set_status('')
                 # `try-` just resets the `try` bit and doesn't correspond to
                 # any meaningful labeling events.
                 state.change_labels(LabelEvent.TRY)
