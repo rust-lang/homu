@@ -408,6 +408,13 @@ class PullReqState:
             [self.repo_label, self.num, src, body],
         )
 
+    @property
+    def author(self):
+        """
+        Get the GitHub login name of the author of the pull request
+        """
+        return self.get_issue().user.login
+
 
 def sha_cmp(short, full):
     return len(short) >= 4 and short == full[:len(short)]
@@ -576,9 +583,18 @@ def parse_commands(body, username, repo_label, repo_cfg, state, my_username,
                     state.change_labels(LabelEvent.APPROVED)
 
         elif word == 'r-':
-            if not verify_auth(username, repo_label, repo_cfg, state,
-                               AuthState.REVIEWER, realtime, my_username):
-                continue
+            # Allow the author of a pull request to unapprove their own PR. The
+            # author can already perform other actions that effectively
+            # unapprove the PR (change the target branch, push more commits,
+            # etc.) so allowing them to directly unapprove it is also allowed.
+
+            # Because verify_auth has side-effects (especially, it may leave a
+            # comment on the pull request if the user is not authorized), we
+            # need to do the author check BEFORE the verify_auth check.
+            if state.author != username:
+                if not verify_auth(username, repo_label, repo_cfg, state,
+                                   AuthState.REVIEWER, realtime, my_username):
+                    continue
 
             state.approved_by = ''
             state.save()
