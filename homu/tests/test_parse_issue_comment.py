@@ -1,5 +1,5 @@
 import unittest
-from parse_issue_comment import parse_issue_comment
+from homu.parse_issue_comment import parse_issue_comment
 
 # Random commit number. Just so that we don't need to come up with a new one
 # for every test.
