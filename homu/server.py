@@ -2,12 +2,14 @@ import hmac
 import json
 import urllib.parse
 from .main import (
-    PullReqState,
     parse_commands,
-    INTERRUPTED_BY_HOMU_RE,
     synchronize,
     LabelEvent,
 )
+from .consts import (
+    INTERRUPTED_BY_HOMU_RE,
+)
+from .pull_req_state import PullReqState
 from . import comments
 from . import utils
 from .utils import lazy_debug

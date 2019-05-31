@@ -1,6 +1,8 @@
 from itertools import chain
 import re
 
+from .consts import WORDS_TO_ROLLUP
+
 
 class IssueCommentCommand:
     """
@@ -91,15 +93,6 @@ class IssueCommentCommand:
         command.hook_name = hook_name
         command.hook_extra = hook_extra
         return command
-
-
-WORDS_TO_ROLLUP = {
-    'rollup-': 0,
-    'rollup': 1,
-    'rollup=maybe': 0,
-    'rollup=never': -1,
-    'rollup=always': 1,
-}
 
 
 def is_sha(sha):
