@@ -71,12 +71,20 @@ def buildbot_sess(repo_cfg):
     sess.get(repo_cfg['buildbot']['url'] + '/logout', allow_redirects=False)
 
 
-db_query_lock = Lock()
+class LockingDatabase:
+    def __init__(self, db):
+        self.db = db
+        self.query_lock = Lock()
 
+    def execute(self, *args):
+        with self.query_lock:
+            return self.db.execute(*args)
 
-def db_query(db, *args):
-    with db_query_lock:
-        db.execute(*args)
+    def fetchone(self, *args):
+        return self.db.fetchone(*args)
+
+    def fetchall(self, *args):
+        return self.db.fetchall(*args)
 
 
 class Repository:
@@ -90,8 +98,7 @@ class Repository:
         self.gh = gh
         self.repo_label = repo_label
         self.db = db
-        db_query(
-            db,
+        db.execute(
             'SELECT treeclosed, treeclosed_src FROM repos WHERE repo = ?',
             [repo_label]
         )
@@ -106,14 +113,12 @@ class Repository:
     def update_treeclosed(self, value, src):
         self.treeclosed = value
         self.treeclosed_src = src
-        db_query(
-            self.db,
+        self.db.execute(
             'DELETE FROM repos where repo = ?',
             [self.repo_label]
         )
         if value > 0:
-            db_query(
-                self.db,
+            self.db.execute(
                 '''
                     INSERT INTO repos (repo, treeclosed, treeclosed_src)
                     VALUES (?, ?, ?)
@@ -228,16 +233,14 @@ class PullReqState:
             self.timeout_timer.cancel()
             self.timeout_timer = None
 
-        db_query(
-            self.db,
+        self.db.execute(
             'UPDATE pull SET status = ? WHERE repo = ? AND num = ?',
             [self.status, self.repo_label, self.num]
         )
 
         # FIXME: self.try_ should also be saved in the database
         if not self.try_:
-            db_query(
-                self.db,
+            self.db.execute(
                 'UPDATE pull SET merge_sha = ? WHERE repo = ? AND num = ?',
                 [self.merge_sha, self.repo_label, self.num]
             )
@@ -252,8 +255,7 @@ class PullReqState:
         if mergeable is not None:
             self.mergeable = mergeable
 
-            db_query(
-                self.db,
+            self.db.execute(
                 'INSERT OR REPLACE INTO mergeable (repo, num, mergeable) VALUES (?, ?, ?)',  # noqa
                 [self.repo_label, self.num, self.mergeable]
             )
@@ -263,8 +265,7 @@ class PullReqState:
             else:
                 self.mergeable = None
 
-            db_query(
-                self.db,
+            self.db.execute(
                 'DELETE FROM mergeable WHERE repo = ? AND num = ?',
                 [self.repo_label, self.num]
             )
@@ -276,8 +277,7 @@ class PullReqState:
         } for x in builders}
 
         if use_db:
-            db_query(
-                self.db,
+            self.db.execute(
                 'DELETE FROM build_res WHERE repo = ? AND num = ?',
                 [self.repo_label, self.num]
             )
@@ -291,8 +291,7 @@ class PullReqState:
             'url': url,
         }
 
-        db_query(
-            self.db,
+        self.db.execute(
             'INSERT OR REPLACE INTO build_res (repo, num, builder, res, url, merge_sha) VALUES (?, ?, ?, ?, ?, ?)',  # noqa
             [
                 self.repo_label,
@@ -318,8 +317,7 @@ class PullReqState:
         return repo
 
     def save(self):
-        db_query(
-            self.db,
+        self.db.execute(
             'INSERT OR REPLACE INTO pull (repo, num, status, merge_sha, title, body, head_sha, head_ref, base_ref, assignee, approved_by, priority, try_, rollup, delegate) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',  # noqa
             [
                 self.repo_label,
@@ -401,13 +399,11 @@ class PullReqState:
 
     def record_retry_log(self, src, body):
         # destroy ancient records
-        db_query(
-            self.db,
+        self.db.execute(
             "DELETE FROM retry_log WHERE repo = ? AND time < date('now', ?)",
             [self.repo_label, global_cfg.get('retry_log_expire', '-42 days')],
         )
-        db_query(
-            self.db,
+        self.db.execute(
             'INSERT INTO retry_log (repo, num, src, msg) VALUES (?, ?, ?, ?)',
             [self.repo_label, self.num, src, body],
         )
@@ -1474,9 +1470,9 @@ def synchronize(repo_label, repo_cfg, logger, gh, states, repos, db, mergeable_q
 
     repo = gh.repository(repo_cfg['owner'], repo_cfg['name'])
 
-    db_query(db, 'DELETE FROM pull WHERE repo = ?', [repo_label])
-    db_query(db, 'DELETE FROM build_res WHERE repo = ?', [repo_label])
-    db_query(db, 'DELETE FROM mergeable WHERE repo = ?', [repo_label])
+    db.execute('DELETE FROM pull WHERE repo = ?', [repo_label])
+    db.execute('DELETE FROM build_res WHERE repo = ?', [repo_label])
+    db.execute('DELETE FROM mergeable WHERE repo = ?', [repo_label])
 
     saved_states = {}
     for num, state in states[repo_label].items():
@@ -1489,8 +1485,7 @@ def synchronize(repo_label, repo_cfg, logger, gh, states, repos, db, mergeable_q
     repos[repo_label] = Repository(repo, repo_label, db)
 
     for pull in repo.iter_pulls(state='open'):
-        db_query(
-            db,
+        db.execute(
             'SELECT status FROM pull WHERE repo = ? AND num = ?',
             [repo_label, pull.number])
         row = db.fetchone()
@@ -1626,9 +1621,10 @@ def main():
     db_conn = sqlite3.connect(db_file,
                               check_same_thread=False,
                               isolation_level=None)
-    db = db_conn.cursor()
+    inner_db = db_conn.cursor()
+    db = LockingDatabase(inner_db)
 
-    db_query(db, '''CREATE TABLE IF NOT EXISTS pull (
+    db.execute('''CREATE TABLE IF NOT EXISTS pull (
         repo TEXT NOT NULL,
         num INTEGER NOT NULL,
         status TEXT NOT NULL,
@@ -1647,7 +1643,7 @@ def main():
         UNIQUE (repo, num)
     )''')
 
-    db_query(db, '''CREATE TABLE IF NOT EXISTS build_res (
+    db.execute('''CREATE TABLE IF NOT EXISTS build_res (
         repo TEXT NOT NULL,
         num INTEGER NOT NULL,
         builder TEXT NOT NULL,
@@ -1657,36 +1653,36 @@ def main():
         UNIQUE (repo, num, builder)
     )''')
 
-    db_query(db, '''CREATE TABLE IF NOT EXISTS mergeable (
+    db.execute('''CREATE TABLE IF NOT EXISTS mergeable (
         repo TEXT NOT NULL,
         num INTEGER NOT NULL,
         mergeable INTEGER NOT NULL,
         UNIQUE (repo, num)
     )''')
-    db_query(db, '''CREATE TABLE IF NOT EXISTS repos (
+    db.execute('''CREATE TABLE IF NOT EXISTS repos (
         repo TEXT NOT NULL,
         treeclosed INTEGER NOT NULL,
         treeclosed_src TEXT,
         UNIQUE (repo)
     )''')
 
-    db_query(db, '''CREATE TABLE IF NOT EXISTS retry_log (
+    db.execute('''CREATE TABLE IF NOT EXISTS retry_log (
         repo TEXT NOT NULL,
         num INTEGER NOT NULL,
         time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
         src TEXT NOT NULL,
         msg TEXT NOT NULL
     )''')
-    db_query(db, '''
+    db.execute('''
         CREATE INDEX IF NOT EXISTS retry_log_time_index ON retry_log
         (repo, time DESC)
     ''')
 
     # manual DB migration :/
     try:
-        db_query(db, 'SELECT treeclosed_src FROM repos LIMIT 0')
+        db.execute('SELECT treeclosed_src FROM repos LIMIT 0')
     except sqlite3.OperationalError:
-        db_query(db, 'ALTER TABLE repos ADD COLUMN treeclosed_src TEXT')
+        db.execute('ALTER TABLE repos ADD COLUMN treeclosed_src TEXT')
 
     for repo_label, repo_cfg in cfg['repo'].items():
         repo_cfgs[repo_label] = repo_cfg
@@ -1695,8 +1691,7 @@ def main():
         repo_states = {}
         repos[repo_label] = Repository(None, repo_label, db)
 
-        db_query(
-            db,
+        db.execute(
             'SELECT num, head_sha, status, title, body, head_ref, base_ref, assignee, approved_by, priority, try_, rollup, delegate, merge_sha FROM pull WHERE repo = ?',   # noqa
             [repo_label])
         for num, head_sha, status, title, body, head_ref, base_ref, assignee, approved_by, priority, try_, rollup, delegate, merge_sha in db.fetchall():  # noqa
@@ -1738,8 +1733,7 @@ def main():
 
         states[repo_label] = repo_states
 
-    db_query(
-        db,
+    db.execute(
         'SELECT repo, num, builder, res, url, merge_sha FROM build_res')
     for repo_label, num, builder, res, url, merge_sha in db.fetchall():
         try:
@@ -1749,8 +1743,7 @@ def main():
             if state.merge_sha != merge_sha:
                 raise KeyError
         except KeyError:
-            db_query(
-                db,
+            db.execute(
                 'DELETE FROM build_res WHERE repo = ? AND num = ? AND builder = ?',   # noqa
                 [repo_label, num, builder])
             continue
@@ -1760,23 +1753,22 @@ def main():
             'url': url,
         }
 
-    db_query(db, 'SELECT repo, num, mergeable FROM mergeable')
+    db.execute('SELECT repo, num, mergeable FROM mergeable')
     for repo_label, num, mergeable in db.fetchall():
         try:
             state = states[repo_label][num]
         except KeyError:
-            db_query(
-                db,
+            db.execute(
                 'DELETE FROM mergeable WHERE repo = ? AND num = ?',
                 [repo_label, num])
             continue
 
         state.mergeable = bool(mergeable) if mergeable is not None else None
 
-    db_query(db, 'SELECT repo FROM pull GROUP BY repo')
+    db.execute('SELECT repo FROM pull GROUP BY repo')
     for repo_label, in db.fetchall():
         if repo_label not in repos:
-            db_query(db, 'DELETE FROM pull WHERE repo = ?', [repo_label])
+            db.execute('DELETE FROM pull WHERE repo = ?', [repo_label])
 
     queue_handler_lock = Lock()
 

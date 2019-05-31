@@ -4,7 +4,6 @@ import urllib.parse
 from .main import (
     PullReqState,
     parse_commands,
-    db_query,
     INTERRUPTED_BY_HOMU_RE,
     synchronize,
     LabelEvent,
@@ -198,8 +197,7 @@ def retry_log(repo_label):
         g.cfg['repo'][repo_label]['name'],
     )
 
-    db_query(
-        g.db,
+    g.db.execute(
         '''
             SELECT num, time, src, msg FROM retry_log
             WHERE repo = ? ORDER BY time DESC
@@ -483,12 +481,12 @@ def github():
 
             del g.states[repo_label][pull_num]
 
-            db_query(g.db, 'DELETE FROM pull WHERE repo = ? AND num = ?',
-                     [repo_label, pull_num])
-            db_query(g.db, 'DELETE FROM build_res WHERE repo = ? AND num = ?',
-                     [repo_label, pull_num])
-            db_query(g.db, 'DELETE FROM mergeable WHERE repo = ? AND num = ?',
-                     [repo_label, pull_num])
+            g.db.execute('DELETE FROM pull WHERE repo = ? AND num = ?',
+                         [repo_label, pull_num])
+            g.db.execute('DELETE FROM build_res WHERE repo = ? AND num = ?',
+                         [repo_label, pull_num])
+            g.db.execute('DELETE FROM mergeable WHERE repo = ? AND num = ?',
+                         [repo_label, pull_num])
 
             g.queue_handler()
 
@@ -905,9 +903,9 @@ def admin():
         repo_label = request.json['repo_label']
         repo_cfg = g.repo_cfgs[repo_label]
 
-        db_query(g.db, 'DELETE FROM pull WHERE repo = ?', [repo_label])
-        db_query(g.db, 'DELETE FROM build_res WHERE repo = ?', [repo_label])
-        db_query(g.db, 'DELETE FROM mergeable WHERE repo = ?', [repo_label])
+        g.db.execute('DELETE FROM pull WHERE repo = ?', [repo_label])
+        g.db.execute('DELETE FROM build_res WHERE repo = ?', [repo_label])
+        g.db.execute('DELETE FROM mergeable WHERE repo = ?', [repo_label])
 
         del g.states[repo_label]
         del g.repos[repo_label]
