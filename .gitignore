@@ -5,3 +5,4 @@
 /homu.egg-info/
 /main.db
 /cache
+*.pyc
