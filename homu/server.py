@@ -82,7 +82,7 @@ def result(repo_label, pull):
     states = [state for state in g.states[repo_label].values()
               if state.num == pull]
     if len(states) == 0:
-        abort(204, 'No build results for pull request {}'.format(pull))
+        abort(404, 'No build results for pull request {}'.format(pull))
 
     state = states[0]
     builders = []
@@ -94,15 +94,15 @@ def result(repo_label, pull):
         if data['res'] is not None:
             result = "success" if data['res'] else "failed"
 
-        if not data['url']:
-            # This happens to old try builds
-            abort(204, 'No build results for pull request {}'.format(pull))
-
-        builders.append({
-            'url': data['url'],
+        builder_details = {
             'result': result,
             'name': builder,
-        })
+        }
+
+        if data['url']:
+            builder_details['url'] = data['url']
+
+        builders.append(builder_details)
 
     return g.tpls['build_res'].render(repo_label=repo_label, repo_url=repo_url,
                                       builders=builders, pull=pull)
@@ -604,7 +604,10 @@ def github():
         checks_name = None
         if 'checks' in repo_cfg:
             for name, value in repo_cfg['checks'].items():
-                if 'name' in value and value['name'] == current_run_name:
+                if state.try_ and 'try_name' in value:
+                    if value['try_name'] == current_run_name:
+                        checks_name = name
+                elif 'name' in value and value['name'] == current_run_name:
                     checks_name = name
         if checks_name is None:
             return 'OK'

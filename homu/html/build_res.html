@@ -47,7 +47,13 @@
                 <tr>
                     <td class="hide">{{loop.index}}</td>
                     <td>{{builder.name}}</td>
-                    <td class="{{builder.result}}"><a href="{{builder.url}}">{{builder.result}}</a></td>
+                    <td class="{{builder.result}}">
+                        {%- if builder.url -%}
+                            <a href="{{builder.url}}">{{builder.result}}</a>
+                        {%- else -%}
+                            {{ builder.result }}
+                        {%- endif -%}
+                    </td>
                 </tr>
                 {% endfor %}
             </tbody>

@@ -408,6 +408,13 @@ class PullReqState:
             [self.repo_label, self.num, src, body],
         )
 
+    @property
+    def author(self):
+        """
+        Get the GitHub login name of the author of the pull request
+        """
+        return self.get_issue().user.login
+
 
 def sha_cmp(short, full):
     return len(short) >= 4 and short == full[:len(short)]
@@ -489,13 +496,10 @@ def parse_commands(body, username, repo_label, repo_cfg, state, my_username,
             for wip_kw in ['WIP', 'TODO', '[WIP]', '[TODO]', '[DO NOT MERGE]']:
                 if state.title.upper().startswith(wip_kw):
                     if realtime:
-                        state.add_comment((
-                            ':clipboard:'
-                            ' Looks like this PR is still in progress,'
-                            ' ignoring approval.\n\n'
-                            'Hint: Remove **{}** from this PR\'s title when'
-                            ' it is ready for review.'
-                        ).format(wip_kw))
+                        state.add_comment(comments.ApprovalIgnoredWip(
+                            sha=state.head_sha,
+                            wip_keyword=wip_kw,
+                        ))
                     is_wip = True
                     break
             if is_wip:
@@ -557,14 +561,10 @@ def parse_commands(body, username, repo_label, repo_cfg, state, my_username,
                         .format(msg, state.head_sha)
                     )
                 else:
-                    state.add_comment(
-                        ':pushpin: Commit {} has been approved by `{}`\n\n<!-- @{} r={} {} -->'  # noqa
-                        .format(
-                            state.head_sha,
-                            approver,
-                            my_username,
-                            approver,
-                            state.head_sha,
+                    state.add_comment(comments.Approved(
+                        sha=state.head_sha,
+                        approver=approver,
+                        bot=my_username,
                     ))
                     treeclosed = state.blocked_by_closed_tree()
                     if treeclosed:
@@ -575,9 +575,18 @@ def parse_commands(body, username, repo_label, repo_cfg, state, my_username,
                     state.change_labels(LabelEvent.APPROVED)
 
         elif command.action == 'unapprove':
-            if not verify_auth(username, repo_label, repo_cfg, state,
-                               AuthState.REVIEWER, realtime, my_username):
-                continue
+            # Allow the author of a pull request to unapprove their own PR. The
+            # author can already perform other actions that effectively
+            # unapprove the PR (change the target branch, push more commits,
+            # etc.) so allowing them to directly unapprove it is also allowed.
+
+            # Because verify_auth has side-effects (especially, it may leave a
+            # comment on the pull request if the user is not authorized), we
+            # need to do the author check BEFORE the verify_auth check.
+            if state.author != username:
+                if not verify_auth(username, repo_label, repo_cfg, state,
+                                   AuthState.REVIEWER, realtime, my_username):
+                    continue
 
             state.approved_by = ''
             state.save()
@@ -610,10 +619,10 @@ def parse_commands(body, username, repo_label, repo_cfg, state, my_username,
             state.save()
 
             if realtime:
-                state.add_comment(
-                    ':v: @{} can now approve this pull request'
-                    .format(state.delegate)
-                )
+                state.add_comment(comments.Delegated(
+                    delegator=username,
+                    delegate=state.delegate
+                ))
 
         elif command.action == 'undelegate':
             # TODO: why is this a TRY?
@@ -630,10 +639,10 @@ def parse_commands(body, username, repo_label, repo_cfg, state, my_username,
             state.save()
 
             if realtime:
-                state.add_comment(
-                    ':v: @{} can now approve this pull request'
-                    .format(state.delegate)
-                )
+                state.add_comment(comments.Delegated(
+                    delegator=username,
+                    delegate=state.delegate
+                ))
 
         elif command.action == 'retry' and realtime:
             if not _try_auth_verified():
@@ -662,6 +671,10 @@ def parse_commands(body, username, repo_label, repo_cfg, state, my_username,
 
             state.save()
             if realtime and state.try_:
+                # If we've tried before, the status will be 'success', and this
+                # new try will not be picked up. Set the status back to ''
+                # so the try will be run again.
+                state.set_status('')
                 # `try-` just resets the `try` bit and doesn't correspond to
                 # any meaningful labeling events.
                 state.change_labels(LabelEvent.TRY)
@@ -1224,7 +1237,11 @@ def start_build(state, repo_cfgs, buildbot_slots, logger, db, git_cfg):
         if found_travis_context and len(builders) == 1:
             can_try_travis_exemption = True
     if 'checks' in repo_cfg:
-        builders += ['checks-' + key for key, value in repo_cfg['checks'].items() if 'name' in value]  # noqa
+        builders += [
+            'checks-' + key
+            for key, value in repo_cfg['checks'].items()
+            if 'name' in value or (state.try_ and 'try_name' in value)
+        ]
         only_status_builders = False
 
     if len(builders) == 0:
