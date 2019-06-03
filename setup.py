@@ -28,6 +28,7 @@ setup(
     entry_points={
         'console_scripts': [
             'homu=homu.main:main',
+            'homu-sync-test=homu.sync_test:main',
         ],
     },
     zip_safe=False,

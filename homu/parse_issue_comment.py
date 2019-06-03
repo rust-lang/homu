@@ -1,5 +1,6 @@
 from itertools import chain
 import re
+import json
 
 
 class IssueCommentCommand:
@@ -92,6 +93,12 @@ class IssueCommentCommand:
         command.hook_extra = hook_extra
         return command
 
+    @classmethod
+    def homu_state(cls, state):
+        command = cls('homu-state')
+        command.homu_state = state
+        return command
+
 
 WORDS_TO_ROLLUP = {
     'rollup-': 0,
@@ -151,9 +158,16 @@ def parse_issue_comment(username, body, sha, botname, hooks=[]):
            E.g. `['hook1', 'hook2', 'hook3']`
     """
 
-    words = list(chain.from_iterable(re.findall(r'\S+', x) for x in body.splitlines() if '@' + botname in x))  # noqa
-
     commands = []
+
+    states = chain.from_iterable(re.findall(r'<!-- homu:(.*?)-->', x)
+                                 for x
+                                 in body.splitlines())
+
+    for state in states:
+        commands.append(IssueCommentCommand.homu_state(json.loads(state)))
+
+    words = list(chain.from_iterable(re.findall(r'\S+', x) for x in body.splitlines() if '@' + botname in x))  # noqa
 
     if words[1:] == ["are", "you", "still", "there?"]:
         commands.append(IssueCommentCommand.ping('portal'))
