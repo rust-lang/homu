@@ -560,3 +560,26 @@ def test_ignore_commands_after_bors_line():
     command = commands[0]
     assert command.action == 'approve'
     assert command.actor == 'jack'
+
+
+def test_homu_state():
+    """
+    Test that when a comment has a Homu state in it, we return that state.
+    """
+
+    author = "bors"
+    body = """
+    :hourglass: Trying commit 3d67c2da893aed40bc36b6ac9148c593aa0a868a with merge b7a0ff78ba2ba0b3f5e1a8e89464a84dc386aa81...
+    <!-- homu: {"type":"TryBuildStarted","head_sha":"3d67c2da893aed40bc36b6ac9148c593aa0a868a","merge_sha":"b7a0ff78ba2ba0b3f5e1a8e89464a84dc386aa81"} -->
+    """ # noqa
+
+    commands = parse_issue_comment(author, body, commit, "bors")
+
+    assert len(commands) == 1
+    command = commands[0]
+    assert command.action == 'homu-state'
+    assert command.homu_state == {
+        'type': 'TryBuildStarted',
+        'head_sha': '3d67c2da893aed40bc36b6ac9148c593aa0a868a',
+        'merge_sha': 'b7a0ff78ba2ba0b3f5e1a8e89464a84dc386aa81',
+    }
