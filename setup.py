@@ -24,6 +24,7 @@ setup(
     ],
     tests_require=[
         'pytest',
+        'httpretty',
     ],
     package_data={
         'homu': [
