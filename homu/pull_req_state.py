@@ -1,6 +1,7 @@
 import weakref
 from threading import Timer
 import time
+import functools
 from . import utils
 from . import comments
 from .consts import (
@@ -8,6 +9,35 @@ from .consts import (
     WORDS_TO_ROLLUP,
     LabelEvent,
 )
+from .parse_issue_comment import parse_issue_comment
+from .auth import (
+    assert_authorized,
+    AuthorizationException,
+    AuthState,
+)
+
+
+class ProcessEventResult:
+    """
+    The object returned from PullReqState::process_event that contains
+    information about what changed and what needs to happen.
+    """
+    def __init__(self):
+        self.changed = False
+        self.comments = []
+        self.label_events = []
+
+    def __repr__(self):
+        return 'ProcessEventResult<changed={}, comments={}, label_events={}>'.format(
+                self.changed, self.comments, self.label_events)
+
+
+def sha_cmp(short, full):
+    return len(short) >= 4 and short == full[:len(short)]
+
+
+def sha_or_blank(sha):
+    return sha if re.match(r'^[0-9a-f]+$', sha) else ''
 
 
 class PullReqState:
@@ -287,6 +317,477 @@ class PullReqState:
             'INSERT INTO retry_log (repo, num, src, msg) VALUES (?, ?, ?, ?)',
             [self.repo_label, self.num, src, body],
         )
+
+    def process_event(self, event):
+        """
+        Process a GitHub event (in the form of either a Timeline Event from
+        GitHub's Timeline API or an Event from GitHub's Webhooks) and update
+        the state of the pull request accordingly.
+
+        Returns an object that contains information about the change, with at
+        least the following properties:
+
+            changed: bool -- Whether or not the state of the pull request was
+            affected by this event
+
+            comments: [string] -- Comments that can be made on the pull request
+            as a result of this event. In realtime mode, these should then be
+            applied to the pull request. In synchronization mode, they may be
+            dropped. (In testing mode, they should be tested.)
+
+            label_events: [LabelEvent] -- Any label events that need to be
+            applied as a result of this event.
+        """
+
+        result = ProcessEventResult()
+        if event.event_type == 'PullRequestCommit':
+            result.changed = self.head_sha != event['commit']['oid']
+            self.head_sha = event['commit']['oid']
+            # New commits come in: no longer approved
+            result.changed = result.changed or self.approved_by != ''
+            self.approved_by = ''
+
+        elif event.event_type == 'HeadRefForcePushedEvent':
+            result.changed = self.head_sha != event['afterCommit']['oid']
+            self.head_sha = event['afterCommit']['oid']
+            # New commits come in: no longer approved
+            result.changed = result.changed or self.approved_by != ''
+            self.approved_by = ''
+
+        elif event.event_type == 'IssueComment':
+            comments = parse_issue_comment(
+                    username=event['author']['login'],
+                    body=event['body'],
+                    sha=self.head_sha,
+                    # TODO: Don't hardcode 'bors'
+                    botname='bors',
+                    # TODO: Hooks!
+                    hooks=[])
+
+            for comment in comments:
+                subresult = self.process_issue_comment(event, comment)
+                result.changed = result.changed or subresult.changed
+                result.comments.extend(subresult.comments)
+                result.label_events.extend(subresult.label_events)
+
+        elif event.event_type == 'RenamedTitleEvent':
+            result.changed = self.title != event['currentTitle']
+            self.title = event['currentTitle']
+
+        elif event.event_type == 'AssignedEvent':
+            result.changed = self.assignee != event['user']['login']
+            self.assignee = event['user']['login']
+
+        elif event.event_type == 'PullRequestReview':
+            # TODO: Pull commands from review comments
+            pass
+
+        elif event.event_type == 'MergedEvent':
+            # TODO: Something here.
+            #result.changed = self.github_state != 'merged'
+            #self.github_state = 'merged'
+            pass
+
+        elif event.event_type == 'ClosedEvent':
+            # TODO: Something here.
+            #if self.github_state != 'merged':
+            #    changed = self.github_state != 'closed'
+            #    self.github_state = 'closed'
+            pass
+
+        elif event.event_type == 'ReopenedEvent':
+            # TODO: Something here.
+            #changed = self.github_state != 'open'
+            #self.github_state = 'open'
+            pass
+
+        elif event.event_type in [
+                'SubscribedEvent',
+                'MentionedEvent',
+                'LabeledEvent',
+                'UnlabeledEvent',
+                'ReferencedEvent',
+                'CrossReferencedEvent']:
+            # We don't care about any of these events.
+            pass
+
+        else:
+            # Ooops, did we miss this event type? Or is it new?
+            print("Unknown event type: {}".format(event.event_type))
+
+        return result
+
+#    def process_issue_comment(self, event, command):
+#        result = ProcessEventResult()
+#        if command.action == 'homu-state':
+#            return self.process_homu_state(event, command)
+#
+#        if command.action == 'approve':
+#            # TODO: Something with states
+#            result.changed = self.approved_by != command.actor
+#            self.approved_by = command.actor
+#
+#        if command.action == 'unapprove':
+#            # TODO: Something with states
+#            result.changed = self.approved_by != ''
+#            self.approved_by = None
+#
+#        # if command.action == 'try':
+#        #    changed = True
+#        #    self.tries.append(PullRequestTry(1, self.head_sha, None))
+#        return result
+
+    def process_issue_comment(self, event, command):
+        # TODO: Don't hardcode botname
+        botname = 'bors'
+        username = event['author']['login']
+        _assert_reviewer_auth_verified = functools.partial(
+            assert_authorized,
+            username,
+            self.repo_label,
+            {}, # repo_cfg
+            self,
+            AuthState.REVIEWER,
+            botname,
+        )
+        _assert_try_auth_verified = functools.partial(
+            assert_authorized,
+            username,
+            self.repo_label,
+            {}, # repo_cfg
+            self,
+            AuthState.TRY,
+            botname,
+        )
+        result = ProcessEventResult()
+        try:
+            found = True
+            if command.action == 'approve':
+                _assert_reviewer_auth_verified()
+
+                approver = command.actor
+                cur_sha = command.commit
+
+                # Ignore WIP PRs
+                is_wip = False
+                for wip_kw in ['WIP', 'TODO', '[WIP]', '[TODO]',
+                               '[DO NOT MERGE]']:
+                    if self.title.upper().startswith(wip_kw):
+                        result.comments.append(comments.ApprovalIgnoredWip(
+                            sha=self.head_sha,
+                            wip_keyword=wip_kw,
+                        ))
+                        is_wip = True
+                        break
+                if is_wip:
+                    return result
+
+#                # Sometimes, GitHub sends the head SHA of a PR as 0000000
+#                # through the webhook. This is called a "null commit", and
+#                # seems to happen when GitHub internally encounters a race
+#                # condition. Last time, it happened when squashing commits
+#                # in a PR. In this case, we just try to retrieve the head
+#                # SHA manually.
+#                if all(x == '0' for x in self.head_sha):
+#                    result.commens.append(
+#                        ':bangbang: Invalid head SHA found, retrying: `{}`'
+#                        .format(self.head_sha)
+#                    )
+#
+#                    state.head_sha = state.get_repo().pull_request(state.num).head.sha  # noqa
+#                    state.save()
+#
+#                    assert any(x != '0' for x in state.head_sha)
+
+                if self.approved_by and username != botname:
+                    lines = []
+
+                    if self.status in ['failure', 'error']:
+                        lines.append('- This pull request previously failed. You should add more commits to fix the bug, or use `retry` to trigger a build again.')  # noqa
+
+                    if lines:
+                        lines.insert(0, '')
+                    lines.insert(0, ':bulb: This pull request was already approved, no need to approve it again.')  # noqa
+
+                    result.comments.append('\n'.join(lines))
+
+                elif not sha_cmp(cur_sha, self.head_sha):
+                    if username != botname:
+                        msg = '`{}` is not a valid commit SHA.'.format(cur_sha)
+                        result.comments.append(
+                            ':scream_cat: {} Please try again with `{}`.'
+                            .format(msg, self.head_sha)
+                        )
+                    else:
+                        # Somehow, the bot specified an invalid sha?
+                        pass
+
+                else:
+                    self.approved_by = approver
+                    self.try_ = False
+                    self.status = ''
+                    result.changed = True
+                    result.label_events.append(LabelEvent.APPROVED)
+
+                    if username != botname:
+                        result.comments.append(comments.Approved(
+                            sha=self.head_sha,
+                            approver=approver,
+                            bot=botname,
+                        ))
+                        treeclosed = self.blocked_by_closed_tree()
+                        if treeclosed:
+                            result.comments.append(
+                                ':evergreen_tree: The tree is currently closed for pull requests below priority {}, this pull request will be tested once the tree is reopened'  # noqa
+                                .format(treeclosed)
+                            )
+
+#            elif command.action == 'unapprove':
+#                # Allow the author of a pull request to unapprove their own PR.
+#                # The author can already perform other actions that effectively
+#                # unapprove the PR (change the target branch, push more
+#                # commits, etc.) so allowing them to directly unapprove it is
+#                # also allowed.
+#                if state.author != username:
+#                    assert_authorized(username, repo_label, repo_cfg, state,
+#                                      AuthState.REVIEWER, my_username)
+#
+#                state.approved_by = ''
+#                state.save()
+#                if realtime:
+#                    state.change_labels(LabelEvent.REJECTED)
+#
+#            elif command.action == 'prioritize':
+#                assert_authorized(username, repo_label, repo_cfg, state,
+#                                  AuthState.TRY, my_username)
+#
+#                pvalue = command.priority
+#
+#                if pvalue > global_cfg['max_priority']:
+#                    if realtime:
+#                        state.add_comment(
+#                            ':stop_sign: Priority higher than {} is ignored.'
+#                            .format(global_cfg['max_priority'])
+#                        )
+#                    #continue
+#                state.priority = pvalue
+#                state.save()
+#
+#            elif command.action == 'delegate':
+#                assert_authorized(username, repo_label, repo_cfg, state,
+#                                  AuthState.REVIEWER, my_username)
+#
+#                state.delegate = command.delegate_to
+#                state.save()
+#
+#                if realtime:
+#                    state.add_comment(comments.Delegated(
+#                        delegator=username,
+#                        delegate=state.delegate
+#                    ))
+#
+#            elif command.action == 'undelegate':
+#                # TODO: why is this a TRY?
+#                _assert_try_auth_verified()
+#
+#                state.delegate = ''
+#                state.save()
+#
+#            elif command.action == 'delegate-author':
+#                _assert_reviewer_auth_verified()
+#
+#                state.delegate = state.get_repo().pull_request(state.num).user.login  # noqa
+#                state.save()
+#
+#                if realtime:
+#                    state.add_comment(comments.Delegated(
+#                        delegator=username,
+#                        delegate=state.delegate
+#                    ))
+#
+#            elif command.action == 'retry' and realtime:
+#                _assert_try_auth_verified()
+#
+#                state.set_status('')
+#                if realtime:
+#                    if state.try_:
+#                        event = LabelEvent.TRY
+#                    else:
+#                        event = LabelEvent.APPROVED
+#                    state.record_retry_log(command_src, body, global_cfg)
+#                    state.change_labels(event)
+#
+#            elif command.action in ['try', 'untry'] and realtime:
+#                _assert_try_auth_verified()
+#
+#                if state.status == '' and state.approved_by:
+#                    state.add_comment(
+#                        ':no_good: '
+#                        'Please do not `try` after a pull request has'
+#                        ' been `r+`ed.'
+#                        ' If you need to `try`, unapprove (`r-`) it first.'
+#                    )
+#                    #continue
+#
+#                state.try_ = command.action == 'try'
+#
+#                state.merge_sha = ''
+#                state.init_build_res([])
+#
+#                state.save()
+#                if realtime and state.try_:
+#                    # If we've tried before, the status will be 'success', and
+#                    # this new try will not be picked up. Set the status back
+#                    # to '' so the try will be run again.
+#                    state.set_status('')
+#                    # `try-` just resets the `try` bit and doesn't correspond
+#                    # to any meaningful labeling events.
+#                    state.change_labels(LabelEvent.TRY)
+#
+#            elif command.action == 'rollup':
+#                _assert_try_auth_verified()
+#
+#                state.rollup = command.rollup_value
+#
+#                state.save()
+#
+#            elif command.action == 'force' and realtime:
+#                _assert_try_auth_verified()
+#
+#                if 'buildbot' in repo_cfg:
+#                    with buildbot_sess(repo_cfg) as sess:
+#                        res = sess.post(
+#                            repo_cfg['buildbot']['url'] + '/builders/_selected/stopselected',   # noqa
+#                            allow_redirects=False,
+#                            data={
+#                                'selected': repo_cfg['buildbot']['builders'],
+#                                'comments': INTERRUPTED_BY_HOMU_FMT.format(int(time.time())),  # noqa
+#                        })
+#
+#                if 'authzfail' in res.text:
+#                    err = 'Authorization failed'
+#                else:
+#                    mat = re.search('(?s)<div class="error">(.*?)</div>', res.text) # noqa
+#                    if mat:
+#                        err = mat.group(1).strip()
+#                        if not err:
+#                            err = 'Unknown error'
+#                    else:
+#                        err = ''
+#
+#                if err:
+#                    state.add_comment(
+#                        ':bomb: Buildbot returned an error: `{}`'.format(err)
+#                    )
+#
+#            elif command.action == 'clean' and realtime:
+#                _assert_try_auth_verified()
+#
+#                state.merge_sha = ''
+#                state.init_build_res([])
+#
+#                state.save()
+#
+#            elif command.action == 'ping' and realtime:
+#                if command.ping_type == 'portal':
+#                    state.add_comment(
+#                        ":cake: {}\n\n![]({})".format(
+#                            random.choice(PORTAL_TURRET_DIALOG),
+#                            PORTAL_TURRET_IMAGE)
+#                        )
+#                else:
+#                    state.add_comment(":sleepy: I'm awake I'm awake")
+#
+#            elif command.action == 'treeclosed':
+#                _assert_reviewer_auth_verified()
+#
+#                state.change_treeclosed(command.treeclosed_value, command_src)
+#                state.save()
+#
+#            elif command.action == 'untreeclosed':
+#                _assert_reviewer_auth_verified()
+#
+#                state.change_treeclosed(-1, None)
+#                state.save()
+#
+#            elif command.action == 'hook':
+#                hook = command.hook_name
+#                hook_cfg = global_cfg['hooks'][hook]
+#                if hook_cfg['realtime'] and not realtime:
+#                    #continue
+#                    pass
+#                if hook_cfg['access'] == "reviewer":
+#                    _assert_reviewer_auth_verified()
+#                else:
+#                    _assert_try_auth_verified()
+#
+#                Thread(
+#                    target=handle_hook_response,
+#                    args=[state, hook_cfg, body, command.hook_extra]
+#                ).start()
+
+            else:
+                found = False
+
+            if found:
+                state_changed = True
+
+        except AuthorizationException as e:
+            result.comments.append(e.comment)
+
+        return result
+
+    def process_homu_state(self, event, command):
+        result = ProcessEventResult()
+        state = command.homu_state
+
+        if state['type'] == 'Approved':
+            # TODO: Something with states
+            result.changed = self.approval_state != 'approved'
+            result.changed = result.changed or self.approver != state['approver']
+            self.approval_state = 'approved'
+            self.approved_by = state['approver']
+
+        elif state['type'] == 'BuildStarted':
+            # TODO: Something with states
+            result.changed = True
+            self.build_state = 'pending'
+
+        elif state['type'] == 'BuildCompleted':
+            # TODO: Something with states
+            result.changed = True
+            self.build_state = 'completed'
+
+        elif state['type'] == 'BuildFailed':
+            # TODO: Something with states
+            result.changed = True
+            self.build_state = 'failure'
+
+        elif state['type'] == 'TryBuildStarted':
+            # TODO: Multiple tries?
+            result.changed = True
+            self.tries.append(PullRequestTry(
+                len(self.tries) + 1,
+                state['head_sha'],
+                state['merge_sha'],
+                event['publishedAt'])
+            )
+
+        elif state['type'] == 'TryBuildCompleted':
+            item = next((try_
+                         for try_ in self.tries
+                         if try_.state == 'pending'
+                         and try_.merge_sha == state['merge_sha']),
+                        None)
+
+            if item:
+                result.changed = True
+                # TODO: Multiple tries?
+                item.ended_at = event['publishedAt']
+                item.state = 'completed'
+                item.builders = state['builders']
+
+        return result
 
     @property
     def author(self):

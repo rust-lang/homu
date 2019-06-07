@@ -19,6 +19,8 @@ def test_r_plus():
     command = commands[0]
     assert command.action == 'approve'
     assert command.actor == 'jack'
+    assert command.commit_was_specified is False
+    assert command.commit == commit
 
 
 def test_r_plus_with_colon():
@@ -51,6 +53,7 @@ def test_r_plus_with_sha():
     assert command.action == 'approve'
     assert command.actor == 'jack'
     assert command.commit == other_commit
+    assert command.commit_was_specified is True
 
 
 def test_r_equals():
@@ -66,6 +69,8 @@ def test_r_equals():
     command = commands[0]
     assert command.action == 'approve'
     assert command.actor == 'jill'
+    assert command.commit == commit
+    assert command.commit_was_specified is False
 
 
 def test_hidden_r_equals():
@@ -82,6 +87,7 @@ def test_hidden_r_equals():
     assert command.action == 'approve'
     assert command.actor == 'jack'
     assert command.commit == commit
+    assert command.commit_was_specified is True
 
 
 def test_r_me():

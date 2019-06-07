@@ -16,10 +16,12 @@ class IssueCommentCommand:
         self.action = action
 
     @classmethod
-    def approve(cls, approver, commit):
+    def approve(cls, approver, commit, commit_was_specified):
         command = cls('approve')
         command.commit = commit
         command.actor = approver
+        # Whether or not the commit was explicitely listed.
+        command.commit_was_specified = commit_was_specified
         return command
 
     @classmethod
@@ -186,10 +188,12 @@ def parse_issue_comment(username, body, sha, botname, hooks=[]):
 
         if word == 'r+' or word.startswith('r='):
             approved_sha = sha
+            is_explicit = False
 
             if i + 1 < len(words) and is_sha(words[i + 1]):
                 approved_sha = words[i + 1]
                 words[i + 1] = None
+                is_explicit = True
 
             approver = word[len('r='):] if word.startswith('r=') else username
 
@@ -198,7 +202,7 @@ def parse_issue_comment(username, body, sha, botname, hooks=[]):
                 continue
 
             commands.append(
-                    IssueCommentCommand.approve(approver, approved_sha))
+                    IssueCommentCommand.approve(approver, approved_sha, is_explicit))
 
         elif word == 'r-':
             commands.append(IssueCommentCommand.unapprove())
