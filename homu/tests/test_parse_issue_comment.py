@@ -465,6 +465,31 @@ def test_multiple_hooks():
     assert thirdhook_commands[0].hook_extra is None
 
 
+def test_parse_up_to_first_unknown_word():
+    """
+    Test that when parsing, once we arrive at an unknown word, we stop parsing
+    """
+
+    author = "jack"
+    body = """
+    @bors retry -- yielding priority to the rollup
+    """
+    commands = parse_issue_comment(author, body, commit, "bors")
+
+    assert len(commands) == 1
+    command = commands[0]
+    assert command.action == 'retry'
+
+    body = """
+    @bors retry (yielding priority to the rollup)
+    """
+    commands = parse_issue_comment(author, body, commit, "bors")
+
+    assert len(commands) == 1
+    command = commands[0]
+    assert command.action == 'retry'
+
+
 def test_ignore_commands_before_bors_line():
     """
     Test that when command-like statements appear before the @bors part,

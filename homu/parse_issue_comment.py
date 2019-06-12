@@ -158,13 +158,21 @@ def parse_issue_comment(username, body, sha, botname, hooks=[]):
     if words[1:] == ["are", "you", "still", "there?"]:
         commands.append(IssueCommentCommand.ping('portal'))
 
-    for i, word in reversed(list(enumerate(words))):
-        found = True
+    for i, word in enumerate(words):
+        if word is None:
+            # We already parsed the next word, and we set it to an empty string
+            # to signify that we did.
+            continue
+
+        if word == '@' + botname:
+            continue
+
         if word == 'r+' or word.startswith('r='):
             approved_sha = sha
 
             if i + 1 < len(words) and is_sha(words[i + 1]):
                 approved_sha = words[i + 1]
+                words[i + 1] = None
 
             approver = word[len('r='):] if word.startswith('r=') else username
 
@@ -238,9 +246,7 @@ def parse_issue_comment(username, body, sha, botname, hooks=[]):
             commands.append(IssueCommentCommand.hook(hook_name, hook_extra))
 
         else:
-            found = False
-
-        if found:
-            words[i] = ''
+            # First time we reach an unknown word, stop parsing.
+            break
 
     return commands
