@@ -52,6 +52,22 @@ def test_r_equals():
     assert command.actor == 'jill'
 
 
+def test_hidden_r_equals():
+    author = "bors"
+    body = """
+    :pushpin: Commit {0} has been approved by `jack`
+    <!-- @bors r=jack {0} -->
+    """.format(commit)
+
+    commands = parse_issue_comment(author, body, commit, "bors")
+
+    assert len(commands) == 1
+    command = commands[0]
+    assert command.action == 'approve'
+    assert command.actor == 'jack'
+    assert command.commit == commit
+
+
 def test_r_me():
     """
     Ignore r=me

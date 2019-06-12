@@ -151,7 +151,14 @@ def parse_issue_comment(username, body, sha, botname, hooks=[]):
            E.g. `['hook1', 'hook2', 'hook3']`
     """
 
-    words = list(chain.from_iterable(re.findall(r'\S+', x) for x in body.splitlines() if '@' + botname in x))  # noqa
+    botname_regex = re.compile(r'^.*(?=@' + botname + ')')
+
+    # All of the 'words' after and including the botname
+    words = list(chain.from_iterable(
+                     re.findall(r'\S+', re.sub(botname_regex, '', x))
+                 for x
+                 in body.splitlines()
+                 if '@' + botname in x))  # noqa
 
     commands = []
 
