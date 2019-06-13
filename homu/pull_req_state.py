@@ -339,6 +339,11 @@ class PullReqState:
             applied as a result of this event.
         """
 
+        # TODO: Don't hardcode botname!
+        botname = 'bors'
+        # TODO: Don't hardcode hooks!
+        hooks = []
+
         result = ProcessEventResult()
         if event.event_type == 'PullRequestCommit':
             result.changed = self.head_sha != event['commit']['oid']
@@ -354,14 +359,18 @@ class PullReqState:
             result.changed = result.changed or self.approved_by != ''
             self.approved_by = ''
 
+        elif event.event_type == 'BaseRefChangedEvent':
+            # Base ref changed: no longer approved
+            result.changed = self.approved_by != ''
+            self.approved_by = ''
+
+
         elif event.event_type == 'IssueComment':
             comments = parse_issue_comment(
                     username=event['author']['login'],
                     body=event['body'],
                     sha=self.head_sha,
-                    # TODO: Don't hardcode 'bors'
-                    botname='bors',
-                    # TODO: Hooks!
+                    botname=botname,
                     hooks=[])
 
             for comment in comments:
@@ -441,11 +450,13 @@ class PullReqState:
         # TODO: Don't hardcode botname
         botname = 'bors'
         username = event['author']['login']
+        # TODO: Don't hardcode repo_cfg
+        repo_cfg = {}
         _assert_reviewer_auth_verified = functools.partial(
             assert_authorized,
             username,
             self.repo_label,
-            {}, # repo_cfg
+            repo_cfg,
             self,
             AuthState.REVIEWER,
             botname,
@@ -454,7 +465,7 @@ class PullReqState:
             assert_authorized,
             username,
             self.repo_label,
-            {}, # repo_cfg
+            repo_cfg,
             self,
             AuthState.TRY,
             botname,
@@ -542,37 +553,38 @@ class PullReqState:
                                 .format(treeclosed)
                             )
 
-#            elif command.action == 'unapprove':
-#                # Allow the author of a pull request to unapprove their own PR.
-#                # The author can already perform other actions that effectively
-#                # unapprove the PR (change the target branch, push more
-#                # commits, etc.) so allowing them to directly unapprove it is
-#                # also allowed.
-#                if state.author != username:
-#                    assert_authorized(username, repo_label, repo_cfg, state,
-#                                      AuthState.REVIEWER, my_username)
-#
-#                state.approved_by = ''
-#                state.save()
-#                if realtime:
-#                    state.change_labels(LabelEvent.REJECTED)
-#
-#            elif command.action == 'prioritize':
-#                assert_authorized(username, repo_label, repo_cfg, state,
-#                                  AuthState.TRY, my_username)
-#
-#                pvalue = command.priority
-#
-#                if pvalue > global_cfg['max_priority']:
-#                    if realtime:
-#                        state.add_comment(
-#                            ':stop_sign: Priority higher than {} is ignored.'
-#                            .format(global_cfg['max_priority'])
-#                        )
-#                    #continue
-#                state.priority = pvalue
-#                state.save()
-#
+            elif command.action == 'unapprove':
+                # Allow the author of a pull request to unapprove their own PR.
+                # The author can already perform other actions that effectively
+                # unapprove the PR (change the target branch, push more
+                # commits, etc.) so allowing them to directly unapprove it is
+                # also allowed.
+                if self.author != username:
+                    assert_authorized(username, self.repo_label, repo_cfg, self,
+                                      AuthState.REVIEWER, botname)
+
+                self.approved_by = ''
+                result.changed = True
+                result.label_events.append(LabelEvent.REJECTED)
+
+            elif command.action == 'prioritize':
+                assert_authorized(username, self.repo_label, repo_cfg, self,
+                                  AuthState.TRY, botname)
+
+                pvalue = command.priority
+
+                # TODO: Don't hardcode max_priority
+                # global_cfg['max_priority']
+                max_priority = 9001
+                if pvalue > max_priority:
+                    result.comments.append(
+                        ':stop_sign: Priority higher than {} is ignored.'
+                        .format(max_priority)
+                    )
+                    return result
+                result.changed = self.priority != pvalue
+                self.priority = pvalue
+
 #            elif command.action == 'delegate':
 #                assert_authorized(username, repo_label, repo_cfg, state,
 #                                  AuthState.REVIEWER, my_username)
@@ -644,13 +656,12 @@ class PullReqState:
 #                    # to any meaningful labeling events.
 #                    state.change_labels(LabelEvent.TRY)
 #
-#            elif command.action == 'rollup':
-#                _assert_try_auth_verified()
-#
-#                state.rollup = command.rollup_value
-#
-#                state.save()
-#
+            elif command.action == 'rollup':
+                _assert_try_auth_verified()
+
+                result.changed = self.rollup != command.rollup_value
+                self.rollup = command.rollup_value
+
 #            elif command.action == 'force' and realtime:
 #                _assert_try_auth_verified()
 #
