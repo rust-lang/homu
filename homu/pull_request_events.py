@@ -244,6 +244,17 @@ def all(access_token, owner, repo, pull):
 
         r = response.json()
 
+        if 'errors' in r:
+            print("GraphQL query failed:")
+            for error in r['errors']:
+                print(" * {}".format(error['message']))
+            time.sleep(1)
+            continue
+
+        if 'data' not in r:
+            print("response.status_code = {}".format(response.status_code))
+            print("r = {}".format(r))
+
         pull_request = r['data']['repository']['pullRequest']
         page_info = pull_request['timelineItems']['pageInfo']
         events = pull_request['timelineItems']['nodes']

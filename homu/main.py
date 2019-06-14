@@ -33,6 +33,7 @@ from .git_helper import SSH_KEY_FILE
 import shlex
 import random
 from .pull_req_state import PullReqState
+from .pull_request_events import all as all_pull_request_events
 
 global_cfg = {}
 
@@ -1166,66 +1167,85 @@ def synchronize(repo_label, repo_cfg, logger, gh, states, repos, db, mergeable_q
     states[repo_label] = {}
     repos[repo_label] = Repository(repo, repo_label, db)
 
+    print("Getting pulls...")
     for pull in repo.iter_pulls(state='open'):
-        db.execute(
-            'SELECT status FROM pull WHERE repo = ? AND num = ?',
-            [repo_label, pull.number])
-        row = db.fetchone()
-        if row:
-            status = row[0]
-        else:
-            status = ''
-            for info in utils.github_iter_statuses(repo, pull.head.sha):
-                if info.context == 'homu':
-                    status = info.state
-                    break
+#        db.execute(
+#            'SELECT status FROM pull WHERE repo = ? AND num = ?',
+#            [repo_label, pull.number])
+#        row = db.fetchone()
+#        if row:
+#            status = row[0]
+#        else:
+#            status = ''
+#            for info in utils.github_iter_statuses(repo, pull.head.sha):
+#                if info.context == 'homu':
+#                    status = info.state
+#                    break
+
+        if pull.number in [60966, 60730, 60547, 59312]:
+            # TODO: WHY DOES THIS HAPPEN!?
+            print("Skipping {} because GraphQL never returns a success!".format(pull.number))
+            continue
+
+        print("{}/{}#{}".format(repo_cfg['owner'], repo_cfg['name'], pull.number))
+        access_token = global_cfg['github']['access_token']
+        response = all_pull_request_events(access_token, repo_cfg['owner'], repo_cfg['name'], pull.number)
+        status = ''
 
         state = PullReqState(pull.number, pull.head.sha, status, db, repo_label, mergeable_que, gh, repo_cfg['owner'], repo_cfg['name'], repo_cfg.get('labels', {}), repos)  # noqa
-        state.title = pull.title
+        state.cfg = repo_cfg
+        state.title = response.initial_title
         state.body = pull.body
         state.head_ref = pull.head.repo[0] + ':' + pull.head.ref
         state.base_ref = pull.base.ref
-        state.set_mergeable(None)
-        state.assignee = pull.assignee.login if pull.assignee else ''
+        if response.mergeable == 'MERGEABLE':
+            state.set_mergeable(True)
+        elif response.mergeable == 'CONFLICTING':
+            state.set_mergeable(False)
+        else:
+            state.set_mergeable(None)
+        state.assignee = ''
 
-        for comment in pull.iter_comments():
-            if comment.original_commit_id == pull.head.sha:
-                parse_commands(
-                    comment.body,
-                    comment.user.login,
-                    repo_label,
-                    repo_cfg,
-                    state,
-                    my_username,
-                    db,
-                    states,
-                    sha=comment.original_commit_id,
-                    command_src=comment.to_json()['html_url'],
-                    # FIXME switch to `comment.html_url`
-                    #       after updating github3 to 1.3.0+
-                )
-
-        for comment in pull.iter_issue_comments():
-            parse_commands(
-                comment.body,
-                comment.user.login,
-                repo_label,
-                repo_cfg,
-                state,
-                my_username,
-                db,
-                states,
-                command_src=comment.to_json()['html_url'],
-                # FIXME switch to `comment.html_url`
-                #       after updating github3 to 1.3.0+
-            )
-
-        saved_state = saved_states.get(pull.number)
-        if saved_state:
-            for key, val in saved_state.items():
-                setattr(state, key, val)
-
-        state.save()
+#        for comment in pull.iter_comments():
+#            if comment.original_commit_id == pull.head.sha:
+#                parse_commands(
+#                    comment.body,
+#                    comment.user.login,
+#                    repo_label,
+#                    repo_cfg,
+#                    state,
+#                    my_username,
+#                    db,
+#                    states,
+#                    sha=comment.original_commit_id,
+#                    command_src=comment.to_json()['html_url'],
+#                    # FIXME switch to `comment.html_url`
+#                    #       after updating github3 to 1.3.0+
+#                )
+#
+#        for comment in pull.iter_issue_comments():
+#            parse_commands(
+#                comment.body,
+#                comment.user.login,
+#                repo_label,
+#                repo_cfg,
+#                state,
+#                my_username,
+#                db,
+#                states,
+#                command_src=comment.to_json()['html_url'],
+#                # FIXME switch to `comment.html_url`
+#                #       after updating github3 to 1.3.0+
+#            )
+#
+#        saved_state = saved_states.get(pull.number)
+#        if saved_state:
+#            for key, val in saved_state.items():
+#                setattr(state, key, val)
+#
+#        state.save()
+        for event in response.events:
+            state.process_event(event)
 
         states[repo_label][pull.number] = state
 

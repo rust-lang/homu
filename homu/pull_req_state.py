@@ -420,6 +420,17 @@ class PullReqState:
             # We don't care about any of these events.
             pass
 
+        elif event.event_type in [
+                'UnassignedEvent',
+                'MilestonedEvent',
+                'DemilestonedEvent',
+                'ReviewRequestedEvent',
+                'ReviewDismissedEvent',
+                'CommentDeletedEvent']:
+            # TODO! Review these events to see if we care about any of them.
+            # These events were seen as "Unknown event type: {}" when doing initial testing.
+            pass
+
         else:
             # Ooops, did we miss this event type? Or is it new?
             print("Unknown event type: {}".format(event.event_type))
@@ -451,7 +462,9 @@ class PullReqState:
         botname = 'bors'
         username = event['author']['login']
         # TODO: Don't hardcode repo_cfg
-        repo_cfg = {}
+        #repo_cfg = {}
+        repo_cfg = self.cfg
+
         _assert_reviewer_auth_verified = functools.partial(
             assert_authorized,
             username,
@@ -744,6 +757,7 @@ class PullReqState:
                 state_changed = True
 
         except AuthorizationException as e:
+            print("{} is unauthorized".format(event['author']['login']))
             result.comments.append(e.comment)
 
         return result

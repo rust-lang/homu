@@ -34,6 +34,7 @@ def new_state(num=1, head_sha='abcdef', status='', title='A change'):
             })
 
     state.title = title
+    state.cfg = {}
 
     return state
 
