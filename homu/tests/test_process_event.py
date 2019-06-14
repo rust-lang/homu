@@ -238,12 +238,215 @@ def test_approved(_):
     assert state.get_status() == 'approved'
 
 
-#def test_tried():
-#    """
-#    Test that a pull request that has been tried shows up as tried
-#    """
-#
-#
+@unittest.mock.patch('homu.pull_req_state.assert_authorized',
+                     side_effect=return_true)
+def test_homu_state_approval(_):
+    state = new_state(head_sha='abcdef')
+    event = create_event({
+        'eventType': 'IssueComment',
+        'author': {
+            'login': 'bors',
+        },
+        'body': '''
+            Commit abcdef has been approved
+
+            <!-- homu: {"type":"Approved","sha":"012345","approver":"ferris"} -->
+        ''', # noqa
+        'publishedAt': '1985-04-21T00:00:00Z',
+    })
+    result = state.process_event(event)
+    assert result.changed is True
+    assert len(result.comments) == 0
+    assert state.get_status() == 'approved'
+    assert state.approved_by == 'ferris'
+
+    # Nobody but bors can use homu state
+    state = new_state(head_sha='abcdef')
+    event = create_event({
+        'eventType': 'IssueComment',
+        'author': {
+            'login': 'ferris',
+        },
+        'body': '''
+            Commit abcdef has been approved
+
+            <!-- homu: {"type":"Approved","sha":"012345","approver":"ferris"} -->
+        ''', # noqa
+        'publishedAt': '1985-04-21T00:00:00Z',
+    })
+    result = state.process_event(event)
+    assert result.changed is False
+    assert len(result.comments) == 0
+    assert state.get_status() == ''
+    assert state.approved_by == ''
+
+
+@unittest.mock.patch('homu.pull_req_state.assert_authorized',
+                     side_effect=return_true)
+def test_tried(_):
+    """
+    Test that a pull request that has been tried shows up as tried
+    """
+
+    state = new_state()
+    result = state.process_event(create_event({
+        'eventType': 'IssueComment',
+        'author': {
+            'login': 'bors',
+        },
+        'body': '''
+            :hourglass: Trying commit 065151f8b2c31d9e4ddd34aaf8d3263a997f5cfe with merge 330c85d9270b32d7703ebefc337eb37ae959f741...
+            <!-- homu: {"type":"TryBuildStarted","head_sha":"065151f8b2c31d9e4ddd34aaf8d3263a997f5cfe","merge_sha":"330c85d9270b32d7703ebefc337eb37ae959f741"} -->
+        ''', # noqa
+        'publishedAt': '1985-04-21T00:00:00Z',
+    }))
+
+    assert result.changed is True
+    assert state.try_ is True
+    assert state.get_status() == 'pending'
+
+    result = state.process_event(create_event({
+        'eventType': 'IssueComment',
+        'author': {
+            'login': 'bors',
+        },
+        'body': '''
+            :sunny: Try build successful - [checks-travis](https://travis-ci.com/rust-lang/rust/builds/115542062) Build commit: 330c85d9270b32d7703ebefc337eb37ae959f741
+            <!-- homu: {"type":"TryBuildCompleted","builders":{"checks-travis":"https://travis-ci.com/rust-lang/rust/builds/115542062"},"merge_sha":"330c85d9270b32d7703ebefc337eb37ae959f741"} -->
+        ''', # noqa
+        'publishedAt': '1985-04-21T00:01:00Z',
+    }))
+
+    assert result.changed is True
+    assert state.try_ is True
+    assert state.get_status() == 'success'
+
+
+@unittest.mock.patch('homu.pull_req_state.assert_authorized',
+                     side_effect=return_true)
+def test_try_failed(_):
+    """
+    Test that a pull request that has been tried shows up as tried
+    """
+
+    state = new_state()
+    result = state.process_event(create_event({
+        'eventType': 'IssueComment',
+        'author': {
+            'login': 'bors',
+        },
+        'body': '''
+            :hourglass: Trying commit 065151f8b2c31d9e4ddd34aaf8d3263a997f5cfe with merge 330c85d9270b32d7703ebefc337eb37ae959f741...
+            <!-- homu: {"type":"TryBuildStarted","head_sha":"065151f8b2c31d9e4ddd34aaf8d3263a997f5cfe","merge_sha":"330c85d9270b32d7703ebefc337eb37ae959f741"} -->
+        ''', # noqa
+        'publishedAt': '1985-04-21T00:00:00Z',
+    }))
+
+    assert result.changed is True
+    assert state.try_ is True
+    assert state.get_status() == 'pending'
+
+    result = state.process_event(create_event({
+        'eventType': 'IssueComment',
+        'author': {
+            'login': 'bors',
+        },
+        'body': '''
+            :sunny: Try build successful - [checks-travis](https://travis-ci.com/rust-lang/rust/builds/115542062) Build commit: 330c85d9270b32d7703ebefc337eb37ae959f741
+            <!-- homu: {"type":"TryBuildFailed","builders":{"checks-travis":"https://travis-ci.com/rust-lang/rust/builds/115542062"},"merge_sha":"330c85d9270b32d7703ebefc337eb37ae959f741"} -->
+        ''', # noqa
+        'publishedAt': '1985-04-21T00:01:00Z',
+    }))
+
+    assert result.changed is True
+    assert state.try_ is True
+    assert state.get_status() == 'failure'
+
+
+@unittest.mock.patch('homu.pull_req_state.assert_authorized',
+                     side_effect=return_true)
+def test_build(_):
+    """
+    Test that a pull request that has been built shows up as built. This is
+    maybe a bad test because a PR that has been built and succeeds will likely
+    be merged and removed.
+    """
+
+    state = new_state()
+    result = state.process_event(create_event({
+        'eventType': 'IssueComment',
+        'author': {
+            'login': 'bors',
+        },
+        'body': '''
+            :hourglass: Building commit 065151f8b2c31d9e4ddd34aaf8d3263a997f5cfe with merge 330c85d9270b32d7703ebefc337eb37ae959f741...
+            <!-- homu: {"type":"BuildStarted","head_sha":"065151f8b2c31d9e4ddd34aaf8d3263a997f5cfe","merge_sha":"330c85d9270b32d7703ebefc337eb37ae959f741"} -->
+        ''', # noqa
+        'publishedAt': '1985-04-21T00:00:00Z',
+    }))
+
+    assert result.changed is True
+    assert state.try_ is False
+    assert state.get_status() == 'pending'
+
+    result = state.process_event(create_event({
+        'eventType': 'IssueComment',
+        'author': {
+            'login': 'bors',
+        },
+        'body': '''
+            :sunny: Build successful - [checks-travis](https://travis-ci.com/rust-lang/rust/builds/115542062) Build commit: 330c85d9270b32d7703ebefc337eb37ae959f741
+            <!-- homu: {"type":"BuildCompleted","builders":{"checks-travis":"https://travis-ci.com/rust-lang/rust/builds/115542062"},"merge_sha":"330c85d9270b32d7703ebefc337eb37ae959f741"} -->
+        ''', # noqa
+        'publishedAt': '1985-04-21T00:01:00Z',
+    }))
+
+    assert result.changed is True
+    assert state.try_ is False
+    assert state.get_status() == 'success'
+
+
+@unittest.mock.patch('homu.pull_req_state.assert_authorized',
+                     side_effect=return_true)
+def test_build_failed(_):
+    """
+    Test that a pull request that has been built and failed shows up that way.
+    """
+
+    state = new_state()
+    result = state.process_event(create_event({
+        'eventType': 'IssueComment',
+        'author': {
+            'login': 'bors',
+        },
+        'body': '''
+            :hourglass: Building commit 065151f8b2c31d9e4ddd34aaf8d3263a997f5cfe with merge 330c85d9270b32d7703ebefc337eb37ae959f741...
+            <!-- homu: {"type":"BuildStarted","head_sha":"065151f8b2c31d9e4ddd34aaf8d3263a997f5cfe","merge_sha":"330c85d9270b32d7703ebefc337eb37ae959f741"} -->
+        ''', # noqa
+        'publishedAt': '1985-04-21T00:00:00Z',
+    }))
+
+    assert result.changed is True
+    assert state.try_ is True
+    assert state.get_status() == 'pending'
+
+    result = state.process_event(create_event({
+        'eventType': 'IssueComment',
+        'author': {
+            'login': 'bors',
+        },
+        'body': '''
+            :sunny: Build failed - [checks-travis](https://travis-ci.com/rust-lang/rust/builds/115542062) Build commit: 330c85d9270b32d7703ebefc337eb37ae959f741
+            <!-- homu: {"type":"BuildFailed","builders":{"checks-travis":"https://travis-ci.com/rust-lang/rust/builds/115542062"},"merge_sha":"330c85d9270b32d7703ebefc337eb37ae959f741"} -->
+        ''', # noqa
+        'publishedAt': '1985-04-21T00:01:00Z',
+    }))
+
+    assert result.changed is True
+    assert state.try_ is True
+    assert state.get_status() == 'failure'
+
+
 #def test_tried_and_approved():
 #    """
 #    Test that a pull request that has been approved AND tried shows up as

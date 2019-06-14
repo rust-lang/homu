@@ -426,7 +426,8 @@ class PullReqState:
                 'DemilestonedEvent',
                 'ReviewRequestedEvent',
                 'ReviewDismissedEvent',
-                'CommentDeletedEvent']:
+                'CommentDeletedEvent',
+                'PullRequestCommitCommentThread']:
             # TODO! Review these events to see if we care about any of them.
             # These events were seen as "Unknown event type: {}" when doing initial testing.
             pass
@@ -750,6 +751,12 @@ class PullReqState:
 #                    args=[state, hook_cfg, body, command.hook_extra]
 #                ).start()
 
+            elif command.action == 'homu-state' and username == botname:
+                subresult = self.process_homu_state(event, command)
+                result.comments.extend(subresult.comments)
+                result.label_events.extend(subresult.label_events)
+                result.changed = subresult.changed
+
             else:
                 found = False
 
@@ -766,51 +773,71 @@ class PullReqState:
         result = ProcessEventResult()
         state = command.homu_state
 
+
         if state['type'] == 'Approved':
-            # TODO: Something with states
-            result.changed = self.approval_state != 'approved'
-            result.changed = result.changed or self.approver != state['approver']
-            self.approval_state = 'approved'
+            result.changed = self.approved_by != state['approver']
             self.approved_by = state['approver']
 
         elif state['type'] == 'BuildStarted':
-            # TODO: Something with states
             result.changed = True
-            self.build_state = 'pending'
+            self.try_ = False
+            self.status = 'pending'
+            # TODO: Something with states
+#            result.changed = True
+#            self.build_state = 'pending'
+            pass
 
         elif state['type'] == 'BuildCompleted':
-            # TODO: Something with states
             result.changed = True
-            self.build_state = 'completed'
+            self.try_ = False
+            self.status = 'completed'
+            # TODO: Something with states
+#            result.changed = True
+#            self.build_state = 'completed'
+            pass
 
         elif state['type'] == 'BuildFailed':
-            # TODO: Something with states
             result.changed = True
-            self.build_state = 'failure'
+            self.try_ = False
+            self.status = 'failure'
+            # TODO: Something with states
+#            result.changed = True
+#            self.build_state = 'failure'
+            pass
 
         elif state['type'] == 'TryBuildStarted':
-            # TODO: Multiple tries?
             result.changed = True
-            self.tries.append(PullRequestTry(
-                len(self.tries) + 1,
-                state['head_sha'],
-                state['merge_sha'],
-                event['publishedAt'])
-            )
+            self.try_ = True
+            self.status = 'pending'
+            # TODO: Multiple tries?
+            # result.changed = True
+            # self.tries.append(PullRequestTry(
+            #     len(self.tries) + 1,
+            #     state['head_sha'],
+            #     state['merge_sha'],
+            #     event['publishedAt'])
+            # )
 
         elif state['type'] == 'TryBuildCompleted':
-            item = next((try_
-                         for try_ in self.tries
-                         if try_.state == 'pending'
-                         and try_.merge_sha == state['merge_sha']),
-                        None)
+            result.changed = True
+            self.status = 'success'
+            # TODO: Multiple tries?
+            # item = next((try_
+            #              for try_ in self.tries
+            #              if try_.state == 'pending'
+            #              and try_.merge_sha == state['merge_sha']),
+            #             None)
+            #
+            # if item:
+            #     result.changed = True
+            #     # TODO: Multiple tries?
+            #     item.ended_at = event['publishedAt']
+            #     item.state = 'completed'
+            #     item.builders = state['builders']
 
-            if item:
-                result.changed = True
-                # TODO: Multiple tries?
-                item.ended_at = event['publishedAt']
-                item.state = 'completed'
-                item.builders = state['builders']
+        elif state['type'] == 'TryBuildFailed':
+            result.changed = True
+            self.status = 'failure'
 
         return result
 
