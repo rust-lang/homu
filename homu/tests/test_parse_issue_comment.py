@@ -21,6 +21,22 @@ def test_r_plus():
     assert command.actor == 'jack'
 
 
+def test_r_plus_with_colon():
+    """
+    @bors: r+
+    """
+
+    author = "jack"
+    body = "@bors: r+"
+    commands = parse_issue_comment(author, body, commit, "bors")
+
+    assert len(commands) == 1
+    command = commands[0]
+    assert command.action == 'approve'
+    assert command.actor == 'jack'
+    assert command.commit == commit
+
+
 def test_r_plus_with_sha():
     """
     @bors r+ {sha}

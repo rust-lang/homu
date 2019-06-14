@@ -174,6 +174,9 @@ def parse_issue_comment(username, body, sha, botname, hooks=[]):
         if word == '@' + botname:
             continue
 
+        if word == '@' + botname + ':':
+            continue
+
         if word == 'r+' or word.startswith('r='):
             approved_sha = sha
 
