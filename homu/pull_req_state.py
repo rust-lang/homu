@@ -351,6 +351,11 @@ class PullReqState:
             # New commits come in: no longer approved
             result.changed = result.changed or self.approved_by != ''
             self.approved_by = ''
+            result.changed = result.changed or self.try_ != False
+            self.try_ = False
+            # TODO: Do we *always* reset the state?
+            result.changed = result.changed or self.status != ''
+            self.status = ''
 
         elif event.event_type == 'HeadRefForcePushedEvent':
             result.changed = self.head_sha != event['afterCommit']['oid']
@@ -412,6 +417,7 @@ class PullReqState:
 
         elif event.event_type in [
                 'SubscribedEvent',
+                'UnsubscribedEvent',
                 'MentionedEvent',
                 'LabeledEvent',
                 'UnlabeledEvent',

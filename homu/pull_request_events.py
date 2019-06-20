@@ -231,6 +231,8 @@ def all(access_token, owner, repo, pull):
     result.repo = repo
     result.pull = pull
 
+    attempt = 1
+
     while True:
         response = one(access_token=access_token,
                        owner=owner,
@@ -245,6 +247,9 @@ def all(access_token, owner, repo, pull):
         r = response.json()
 
         if 'errors' in r:
+            if attempt == 10:
+                raise Exception("Too many errors")
+            attempt += 1
             print("GraphQL query failed:")
             for error in r['errors']:
                 print(" * {}".format(error['message']))

@@ -365,6 +365,59 @@ def test_try_failed(_):
 
 @unittest.mock.patch('homu.pull_req_state.assert_authorized',
                      side_effect=return_true)
+def test_try_reset_by_push(_):
+    """
+    Test that a pull request that has been tried, and new commits pushed, does
+    not show up as tried
+    """
+
+    state = new_state()
+    result = state.process_event(create_event({
+        'eventType': 'IssueComment',
+        'author': {
+            'login': 'bors',
+        },
+        'body': '''
+            :hourglass: Trying commit 065151f8b2c31d9e4ddd34aaf8d3263a997f5cfe with merge 330c85d9270b32d7703ebefc337eb37ae959f741...
+            <!-- homu: {"type":"TryBuildStarted","head_sha":"065151f8b2c31d9e4ddd34aaf8d3263a997f5cfe","merge_sha":"330c85d9270b32d7703ebefc337eb37ae959f741"} -->
+        ''', # noqa
+        'publishedAt': '1985-04-21T00:00:00Z',
+    }))
+
+    assert result.changed is True
+    assert state.try_ is True
+    assert state.get_status() == 'pending'
+
+    result = state.process_event(create_event({
+        'eventType': 'IssueComment',
+        'author': {
+            'login': 'bors',
+        },
+        'body': '''
+            :sunny: Try build successful - [checks-travis](https://travis-ci.com/rust-lang/rust/builds/115542062) Build commit: 330c85d9270b32d7703ebefc337eb37ae959f741
+            <!-- homu: {"type":"TryBuildCompleted","builders":{"checks-travis":"https://travis-ci.com/rust-lang/rust/builds/115542062"},"merge_sha":"330c85d9270b32d7703ebefc337eb37ae959f741"} -->
+        ''', # noqa
+        'publishedAt': '1985-04-21T00:01:00Z',
+    }))
+
+    assert result.changed is True
+    assert state.try_ is True
+    assert state.get_status() == 'success'
+
+    result = state.process_event(create_event({
+        'eventType': 'PullRequestCommit',
+        'commit': {
+            'oid': '012345',
+        }
+    }))
+
+    assert result.changed is True
+    assert state.try_ is False
+    assert state.get_status() == ''
+
+
+@unittest.mock.patch('homu.pull_req_state.assert_authorized',
+                     side_effect=return_true)
 def test_build(_):
     """
     Test that a pull request that has been built shows up as built. This is
@@ -403,7 +456,7 @@ def test_build(_):
 
     assert result.changed is True
     assert state.try_ is False
-    assert state.get_status() == 'success'
+    assert state.get_status() == 'completed'
 
 
 @unittest.mock.patch('homu.pull_req_state.assert_authorized',
@@ -427,7 +480,7 @@ def test_build_failed(_):
     }))
 
     assert result.changed is True
-    assert state.try_ is True
+    assert state.try_ is False
     assert state.get_status() == 'pending'
 
     result = state.process_event(create_event({
@@ -443,7 +496,7 @@ def test_build_failed(_):
     }))
 
     assert result.changed is True
-    assert state.try_ is True
+    assert state.try_ is False
     assert state.get_status() == 'failure'
 
 

@@ -1182,14 +1182,18 @@ def synchronize(repo_label, repo_cfg, logger, gh, states, repos, db, mergeable_q
 #                    status = info.state
 #                    break
 
-        if pull.number in [60966, 60730, 60547, 59312]:
-            # TODO: WHY DOES THIS HAPPEN!?
-            print("Skipping {} because GraphQL never returns a success!".format(pull.number))
-            continue
+#        if pull.number in [60966, 60730, 60547, 59312]:
+#            # TODO: WHY DOES THIS HAPPEN!?
+#            # Reported to GitHub. They're working on it.
+#            print("Skipping {} because GraphQL never returns a success!".format(pull.number))
+#            continue
 
         print("{}/{}#{}".format(repo_cfg['owner'], repo_cfg['name'], pull.number))
         access_token = global_cfg['github']['access_token']
-        response = all_pull_request_events(access_token, repo_cfg['owner'], repo_cfg['name'], pull.number)
+        try:
+            response = all_pull_request_events(access_token, repo_cfg['owner'], repo_cfg['name'], pull.number)
+        except:
+            continue
         status = ''
 
         state = PullReqState(pull.number, pull.head.sha, status, db, repo_label, mergeable_que, gh, repo_cfg['owner'], repo_cfg['name'], repo_cfg.get('labels', {}), repos)  # noqa
