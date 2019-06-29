@@ -77,7 +77,7 @@ def db_query(db, *args):
 
 class Repository:
     treeclosed = -1
-    treecloesd_src = None
+    treeclosed_src = None
     gh = None
     label = None
     db = None
@@ -94,7 +94,7 @@ class Repository:
         row = db.fetchone()
         if row:
             self.treeclosed = row[0]
-            self.treecloesd_src = row[1]
+            self.treeclosed_src = row[1]
         else:
             self.treeclosed = -1
             self.treeclosed_src = None

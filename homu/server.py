@@ -63,7 +63,7 @@ def get_repo(repo_label, repo_cfg):
     repo = g.repos[repo_label].gh
     if not repo:
         repo = g.gh.repository(repo_cfg['owner'], repo_cfg['name'])
-        g.repos[repo_label] = repo
+        g.repos[repo_label].gh = repo
         assert repo.owner.login == repo_cfg['owner']
         assert repo.name == repo_cfg['name']
     return repo
