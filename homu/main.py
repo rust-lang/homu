@@ -7,10 +7,19 @@ import functools
 from . import comments
 from . import utils
 from .parse_issue_comment import parse_issue_comment
-from .auth import verify as verify_auth
+from .auth import (
+    assert_authorized,
+    AuthorizationException,
+    AuthState,
+)
 from .utils import lazy_debug
+from .consts import (
+    INTERRUPTED_BY_HOMU_FMT,
+    DEFAULT_TEST_TIMEOUT,
+    LabelEvent,
+)
 import logging
-from threading import Thread, Lock, Timer
+from threading import Thread, Lock
 import time
 import traceback
 import sqlite3
@@ -19,35 +28,14 @@ from contextlib import contextmanager
 from queue import Queue
 import os
 import sys
-from enum import IntEnum, Enum
 import subprocess
 from .git_helper import SSH_KEY_FILE
 import shlex
 import random
-import weakref
-
-STATUS_TO_PRIORITY = {
-    'success': 0,
-    'pending': 1,
-    'approved': 2,
-    '': 3,
-    'error': 4,
-    'failure': 5,
-}
-
-INTERRUPTED_BY_HOMU_FMT = 'Interrupted by Homu ({})'
-INTERRUPTED_BY_HOMU_RE = re.compile(r'Interrupted by Homu \((.+?)\)')
-DEFAULT_TEST_TIMEOUT = 3600 * 10
+from .pull_req_state import PullReqState
+from .pull_request_events import all as all_pull_request_events
 
 global_cfg = {}
-
-WORDS_TO_ROLLUP = {
-    'rollup-': 0,
-    'rollup': 1,
-    'rollup=maybe': 0,
-    'rollup=never': -1,
-    'rollup=always': 1,
-}
 
 
 @contextmanager
@@ -67,12 +55,20 @@ def buildbot_sess(repo_cfg):
     sess.get(repo_cfg['buildbot']['url'] + '/logout', allow_redirects=False)
 
 
-db_query_lock = Lock()
+class LockingDatabase:
+    def __init__(self, db):
+        self.db = db
+        self.query_lock = Lock()
 
+    def execute(self, *args):
+        with self.query_lock:
+            return self.db.execute(*args)
 
-def db_query(db, *args):
-    with db_query_lock:
-        db.execute(*args)
+    def fetchone(self, *args):
+        return self.db.fetchone(*args)
+
+    def fetchall(self, *args):
+        return self.db.fetchall(*args)
 
 
 class Repository:
@@ -86,8 +82,7 @@ class Repository:
         self.gh = gh
         self.repo_label = repo_label
         self.db = db
-        db_query(
-            db,
+        db.execute(
             'SELECT treeclosed, treeclosed_src FROM repos WHERE repo = ?',
             [repo_label]
         )
@@ -102,14 +97,12 @@ class Repository:
     def update_treeclosed(self, value, src):
         self.treeclosed = value
         self.treeclosed_src = src
-        db_query(
-            self.db,
+        self.db.execute(
             'DELETE FROM repos where repo = ?',
             [self.repo_label]
         )
         if value > 0:
-            db_query(
-                self.db,
+            self.db.execute(
                 '''
                     INSERT INTO repos (repo, treeclosed, treeclosed_src)
                     VALUES (?, ?, ?)
@@ -121,329 +114,12 @@ class Repository:
         return self.gh < other.gh
 
 
-class PullReqState:
-    num = 0
-    priority = 0
-    rollup = 0
-    title = ''
-    body = ''
-    head_ref = ''
-    base_ref = ''
-    assignee = ''
-    delegate = ''
-
-    def __init__(self, num, head_sha, status, db, repo_label, mergeable_que,
-                 gh, owner, name, label_events, repos):
-        self.head_advanced('', use_db=False)
-
-        self.num = num
-        self.head_sha = head_sha
-        self.status = status
-        self.db = db
-        self.repo_label = repo_label
-        self.mergeable_que = mergeable_que
-        self.gh = gh
-        self.owner = owner
-        self.name = name
-        self.repos = repos
-        self.timeout_timer = None
-        self.test_started = time.time()
-        self.label_events = label_events
-
-    def head_advanced(self, head_sha, *, use_db=True):
-        self.head_sha = head_sha
-        self.approved_by = ''
-        self.status = ''
-        self.merge_sha = ''
-        self.build_res = {}
-        self.try_ = False
-        self.mergeable = None
-
-        if use_db:
-            self.set_status('')
-            self.set_mergeable(None)
-            self.init_build_res([])
-
-    def __repr__(self):
-        fmt = 'PullReqState:{}/{}#{}(approved_by={}, priority={}, status={})'
-        return fmt.format(
-            self.owner,
-            self.name,
-            self.num,
-            self.approved_by,
-            self.priority,
-            self.status,
-        )
-
-    def sort_key(self):
-        return [
-            STATUS_TO_PRIORITY.get(self.get_status(), -1),
-            1 if self.mergeable is False else 0,
-            0 if self.approved_by else 1,
-            # Sort rollup=always to the bottom of the queue, but treat all
-            # other rollup statuses as equivalent
-            1 if WORDS_TO_ROLLUP['rollup=always'] == self.rollup else 0,
-            -self.priority,
-            self.num,
-        ]
-
-    def __lt__(self, other):
-        return self.sort_key() < other.sort_key()
-
-    def get_issue(self):
-        issue = getattr(self, 'issue', None)
-        if not issue:
-            issue = self.issue = self.get_repo().issue(self.num)
-        return issue
-
-    def add_comment(self, comment):
-        if isinstance(comment, comments.Comment):
-            comment = "%s\n<!-- homu: %s -->" % (
-                comment.render(), comment.jsonify(),
-            )
-        self.get_issue().create_comment(comment)
-
-    def change_labels(self, event):
-        event = self.label_events.get(event.value, {})
-        removes = event.get('remove', [])
-        adds = event.get('add', [])
-        unless = event.get('unless', [])
-        if not removes and not adds:
-            return
-
-        issue = self.get_issue()
-        labels = {label.name for label in issue.iter_labels()}
-        if labels.isdisjoint(unless):
-            labels.difference_update(removes)
-            labels.update(adds)
-            issue.replace_labels(list(labels))
-
-    def set_status(self, status):
-        self.status = status
-        if self.timeout_timer:
-            self.timeout_timer.cancel()
-            self.timeout_timer = None
-
-        db_query(
-            self.db,
-            'UPDATE pull SET status = ? WHERE repo = ? AND num = ?',
-            [self.status, self.repo_label, self.num]
-        )
-
-        # FIXME: self.try_ should also be saved in the database
-        if not self.try_:
-            db_query(
-                self.db,
-                'UPDATE pull SET merge_sha = ? WHERE repo = ? AND num = ?',
-                [self.merge_sha, self.repo_label, self.num]
-            )
-
-    def get_status(self):
-        if self.status == '' and self.approved_by:
-            if self.mergeable is not False:
-                return 'approved'
-        return self.status
-
-    def set_mergeable(self, mergeable, *, cause=None, que=True):
-        if mergeable is not None:
-            self.mergeable = mergeable
-
-            db_query(
-                self.db,
-                'INSERT OR REPLACE INTO mergeable (repo, num, mergeable) VALUES (?, ?, ?)',  # noqa
-                [self.repo_label, self.num, self.mergeable]
-            )
-        else:
-            if que:
-                self.mergeable_que.put([self, cause])
-            else:
-                self.mergeable = None
-
-            db_query(
-                self.db,
-                'DELETE FROM mergeable WHERE repo = ? AND num = ?',
-                [self.repo_label, self.num]
-            )
-
-    def init_build_res(self, builders, *, use_db=True):
-        self.build_res = {x: {
-            'res': None,
-            'url': '',
-        } for x in builders}
-
-        if use_db:
-            db_query(
-                self.db,
-                'DELETE FROM build_res WHERE repo = ? AND num = ?',
-                [self.repo_label, self.num]
-            )
-
-    def set_build_res(self, builder, res, url):
-        if builder not in self.build_res:
-            raise Exception('Invalid builder: {}'.format(builder))
-
-        self.build_res[builder] = {
-            'res': res,
-            'url': url,
-        }
-
-        db_query(
-            self.db,
-            'INSERT OR REPLACE INTO build_res (repo, num, builder, res, url, merge_sha) VALUES (?, ?, ?, ?, ?, ?)',  # noqa
-            [
-                self.repo_label,
-                self.num,
-                builder,
-                res,
-                url,
-                self.merge_sha,
-            ])
-
-    def build_res_summary(self):
-        return ', '.join('{}: {}'.format(builder, data['res'])
-                         for builder, data in self.build_res.items())
-
-    def get_repo(self):
-        repo = self.repos[self.repo_label].gh
-        if not repo:
-            repo = self.gh.repository(self.owner, self.name)
-            self.repos[self.repo_label].gh = repo
-
-            assert repo.owner.login == self.owner
-            assert repo.name == self.name
-        return repo
-
-    def save(self):
-        db_query(
-            self.db,
-            'INSERT OR REPLACE INTO pull (repo, num, status, merge_sha, title, body, head_sha, head_ref, base_ref, assignee, approved_by, priority, try_, rollup, delegate) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',  # noqa
-            [
-                self.repo_label,
-                self.num,
-                self.status,
-                self.merge_sha,
-                self.title,
-                self.body,
-                self.head_sha,
-                self.head_ref,
-                self.base_ref,
-                self.assignee,
-                self.approved_by,
-                self.priority,
-                self.try_,
-                self.rollup,
-                self.delegate,
-            ])
-
-    def refresh(self):
-        issue = self.get_repo().issue(self.num)
-
-        self.title = issue.title
-        self.body = issue.body
-
-    def fake_merge(self, repo_cfg):
-        if not repo_cfg.get('linear', False):
-            return
-        if repo_cfg.get('autosquash', False):
-            return
-
-        issue = self.get_issue()
-        title = issue.title
-        # We tell github to close the PR via the commit message, but it
-        # doesn't know that constitutes a merge.  Edit the title so that it's
-        # clearer.
-        merged_prefix = '[merged] '
-        if not title.startswith(merged_prefix):
-            title = merged_prefix + title
-            issue.edit(title=title)
-
-    def change_treeclosed(self, value, src):
-        self.repos[self.repo_label].update_treeclosed(value, src)
-
-    def blocked_by_closed_tree(self):
-        treeclosed = self.repos[self.repo_label].treeclosed
-        return treeclosed if self.priority < treeclosed else None
-
-    def start_testing(self, timeout):
-        self.test_started = time.time()     # FIXME: Save in the local database
-        self.set_status('pending')
-
-        wm = weakref.WeakMethod(self.timed_out)
-
-        def timed_out():
-            m = wm()
-            if m:
-                m()
-        timer = Timer(timeout, timed_out)
-        timer.start()
-        self.timeout_timer = timer
-
-    def timed_out(self):
-        print('* Test timed out: {}'.format(self))
-
-        self.merge_sha = ''
-        self.save()
-        self.set_status('failure')
-
-        utils.github_create_status(
-            self.get_repo(),
-            self.head_sha,
-            'failure',
-            '',
-            'Test timed out',
-            context='homu')
-        self.add_comment(comments.TimedOut())
-        self.change_labels(LabelEvent.TIMED_OUT)
-
-    def record_retry_log(self, src, body):
-        # destroy ancient records
-        db_query(
-            self.db,
-            "DELETE FROM retry_log WHERE repo = ? AND time < date('now', ?)",
-            [self.repo_label, global_cfg.get('retry_log_expire', '-42 days')],
-        )
-        db_query(
-            self.db,
-            'INSERT INTO retry_log (repo, num, src, msg) VALUES (?, ?, ?, ?)',
-            [self.repo_label, self.num, src, body],
-        )
-
-    @property
-    def author(self):
-        """
-        Get the GitHub login name of the author of the pull request
-        """
-        return self.get_issue().user.login
-
-
 def sha_cmp(short, full):
     return len(short) >= 4 and short == full[:len(short)]
 
 
 def sha_or_blank(sha):
     return sha if re.match(r'^[0-9a-f]+$', sha) else ''
-
-
-class AuthState(IntEnum):
-    # Higher is more privileged
-    REVIEWER = 3
-    TRY = 2
-    NONE = 1
-
-
-class LabelEvent(Enum):
-    APPROVED = 'approved'
-    REJECTED = 'rejected'
-    CONFLICT = 'conflict'
-    SUCCEED = 'succeed'
-    FAILED = 'failed'
-    TRY = 'try'
-    TRY_SUCCEED = 'try_succeed'
-    TRY_FAILED = 'try_failed'
-    EXEMPTED = 'exempted'
-    TIMED_OUT = 'timed_out'
-    INTERRUPTED = 'interrupted'
-    PUSHED = 'pushed'
 
 
 PORTAL_TURRET_DIALOG = ["Target acquired", "Activated", "There you are"]
@@ -455,24 +131,22 @@ def parse_commands(body, username, repo_label, repo_cfg, state, my_username,
     global global_cfg
     state_changed = False
 
-    _reviewer_auth_verified = functools.partial(
-        verify_auth,
+    _assert_reviewer_auth_verified = functools.partial(
+        assert_authorized,
         username,
         repo_label,
         repo_cfg,
         state,
         AuthState.REVIEWER,
-        realtime,
         my_username,
     )
-    _try_auth_verified = functools.partial(
-        verify_auth,
+    _assert_try_auth_verified = functools.partial(
+        assert_authorized,
         username,
         repo_label,
         repo_cfg,
         state,
         AuthState.TRY,
-        realtime,
         my_username,
     )
 
@@ -483,289 +157,290 @@ def parse_commands(body, username, repo_label, repo_cfg, state, my_username,
     commands = parse_issue_comment(username, body, sha, my_username, hooks)
 
     for command in commands:
-        found = True
-        if command.action == 'approve':
-            if not _reviewer_auth_verified():
-                continue
+        try:
+            found = True
+            if command.action == 'approve':
+                _assert_reviewer_auth_verified()
 
-            approver = command.actor
-            cur_sha = command.commit
+                approver = command.actor
+                cur_sha = command.commit
 
-            # Ignore WIP PRs
-            is_wip = False
-            for wip_kw in ['WIP', 'TODO', '[WIP]', '[TODO]', '[DO NOT MERGE]']:
-                if state.title.upper().startswith(wip_kw):
-                    if realtime:
-                        state.add_comment(comments.ApprovalIgnoredWip(
-                            sha=state.head_sha,
-                            wip_keyword=wip_kw,
-                        ))
-                    is_wip = True
-                    break
-            if is_wip:
-                continue
-
-            # Sometimes, GitHub sends the head SHA of a PR as 0000000
-            # through the webhook. This is called a "null commit", and
-            # seems to happen when GitHub internally encounters a race
-            # condition. Last time, it happened when squashing commits
-            # in a PR. In this case, we just try to retrieve the head
-            # SHA manually.
-            if all(x == '0' for x in state.head_sha):
-                if realtime:
-                    state.add_comment(
-                        ':bangbang: Invalid head SHA found, retrying: `{}`'
-                        .format(state.head_sha)
-                    )
-
-                state.head_sha = state.get_repo().pull_request(state.num).head.sha  # noqa
-                state.save()
-
-                assert any(x != '0' for x in state.head_sha)
-
-            if state.approved_by and realtime and username != my_username:
-                for _state in states[state.repo_label].values():
-                    if _state.status == 'pending':
+                # Ignore WIP PRs
+                is_wip = False
+                for wip_kw in ['WIP', 'TODO', '[WIP]', '[TODO]',
+                               '[DO NOT MERGE]']:
+                    if state.title.upper().startswith(wip_kw):
+                        if realtime:
+                            state.add_comment(comments.ApprovalIgnoredWip(
+                                sha=state.head_sha,
+                                wip_keyword=wip_kw,
+                            ))
+                        is_wip = True
                         break
-                else:
-                    _state = None
+                if is_wip:
+                    continue
 
-                lines = []
+                # Sometimes, GitHub sends the head SHA of a PR as 0000000
+                # through the webhook. This is called a "null commit", and
+                # seems to happen when GitHub internally encounters a race
+                # condition. Last time, it happened when squashing commits
+                # in a PR. In this case, we just try to retrieve the head
+                # SHA manually.
+                if all(x == '0' for x in state.head_sha):
+                    if realtime:
+                        state.add_comment(
+                            ':bangbang: Invalid head SHA found, retrying: `{}`'
+                            .format(state.head_sha)
+                        )
 
-                if state.status in ['failure', 'error']:
-                    lines.append('- This pull request previously failed. You should add more commits to fix the bug, or use `retry` to trigger a build again.')  # noqa
+                    state.head_sha = state.get_repo().pull_request(state.num).head.sha  # noqa
+                    state.save()
 
-                if _state:
-                    if state == _state:
-                        lines.append('- This pull request is currently being tested. If there\'s no response from the continuous integration service, you may use `retry` to trigger a build again.')  # noqa
+                    assert any(x != '0' for x in state.head_sha)
+
+                if state.approved_by and realtime and username != my_username:
+                    for _state in states[state.repo_label].values():
+                        if _state.status == 'pending':
+                            break
                     else:
-                        lines.append('- There\'s another pull request that is currently being tested, blocking this pull request: #{}'.format(_state.num))  # noqa
+                        _state = None
 
-                if lines:
-                    lines.insert(0, '')
-                lines.insert(0, ':bulb: This pull request was already approved, no need to approve it again.')  # noqa
+                    lines = []
 
-                state.add_comment('\n'.join(lines))
+                    if state.status in ['failure', 'error']:
+                        lines.append('- This pull request previously failed. You should add more commits to fix the bug, or use `retry` to trigger a build again.')  # noqa
 
-            if sha_cmp(cur_sha, state.head_sha):
-                state.approved_by = approver
-                state.try_ = False
+                    if _state:
+                        if state == _state:
+                            lines.append('- This pull request is currently being tested. If there\'s no response from the continuous integration service, you may use `retry` to trigger a build again.')  # noqa
+                        else:
+                            lines.append('- There\'s another pull request that is currently being tested, blocking this pull request: #{}'.format(_state.num))  # noqa
+
+                    if lines:
+                        lines.insert(0, '')
+                    lines.insert(0, ':bulb: This pull request was already approved, no need to approve it again.')  # noqa
+
+                    state.add_comment('\n'.join(lines))
+
+                if sha_cmp(cur_sha, state.head_sha):
+                    state.approved_by = approver
+                    state.try_ = False
+                    state.set_status('')
+
+                    state.save()
+                elif realtime and username != my_username:
+                    if cur_sha:
+                        msg = '`{}` is not a valid commit SHA.'.format(cur_sha)
+                        state.add_comment(
+                            ':scream_cat: {} Please try again with `{}`.'
+                            .format(msg, state.head_sha)
+                        )
+                    else:
+                        state.add_comment(comments.Approved(
+                            sha=state.head_sha,
+                            approver=approver,
+                            bot=my_username,
+                        ))
+                        treeclosed = state.blocked_by_closed_tree()
+                        if treeclosed:
+                            state.add_comment(
+                                ':evergreen_tree: The tree is currently closed for pull requests below priority {}, this pull request will be tested once the tree is reopened'  # noqa
+                                .format(treeclosed)
+                            )
+                        state.change_labels(LabelEvent.APPROVED)
+
+            elif command.action == 'unapprove':
+                # Allow the author of a pull request to unapprove their own PR.
+                # The author can already perform other actions that effectively
+                # unapprove the PR (change the target branch, push more
+                # commits, etc.) so allowing them to directly unapprove it is
+                # also allowed.
+                if state.author != username:
+                    assert_authorized(username, repo_label, repo_cfg, state,
+                                      AuthState.REVIEWER, my_username)
+
+                state.approved_by = ''
+                state.save()
+                if realtime:
+                    state.change_labels(LabelEvent.REJECTED)
+
+            elif command.action == 'prioritize':
+                assert_authorized(username, repo_label, repo_cfg, state,
+                                  AuthState.TRY, my_username)
+
+                pvalue = command.priority
+
+                if pvalue > global_cfg['max_priority']:
+                    if realtime:
+                        state.add_comment(
+                            ':stop_sign: Priority higher than {} is ignored.'
+                            .format(global_cfg['max_priority'])
+                        )
+                    continue
+                state.priority = pvalue
+                state.save()
+
+            elif command.action == 'delegate':
+                assert_authorized(username, repo_label, repo_cfg, state,
+                                  AuthState.REVIEWER, my_username)
+
+                state.delegate = command.delegate_to
+                state.save()
+
+                if realtime:
+                    state.add_comment(comments.Delegated(
+                        delegator=username,
+                        delegate=state.delegate
+                    ))
+
+            elif command.action == 'undelegate':
+                # TODO: why is this a TRY?
+                _assert_try_auth_verified()
+
+                state.delegate = ''
+                state.save()
+
+            elif command.action == 'delegate-author':
+                _assert_reviewer_auth_verified()
+
+                state.delegate = state.get_repo().pull_request(state.num).user.login  # noqa
+                state.save()
+
+                if realtime:
+                    state.add_comment(comments.Delegated(
+                        delegator=username,
+                        delegate=state.delegate
+                    ))
+
+            elif command.action == 'retry' and realtime:
+                _assert_try_auth_verified()
+
                 state.set_status('')
+                if realtime:
+                    if state.try_:
+                        event = LabelEvent.TRY
+                    else:
+                        event = LabelEvent.APPROVED
+                    state.record_retry_log(command_src, body, global_cfg)
+                    state.change_labels(event)
+
+            elif command.action in ['try', 'untry'] and realtime:
+                _assert_try_auth_verified()
+
+                if state.status == '' and state.approved_by:
+                    state.add_comment(
+                        ':no_good: '
+                        'Please do not `try` after a pull request has'
+                        ' been `r+`ed.'
+                        ' If you need to `try`, unapprove (`r-`) it first.'
+                    )
+                    continue
+
+                state.try_ = command.action == 'try'
+
+                state.merge_sha = ''
+                state.init_build_res([])
 
                 state.save()
-            elif realtime and username != my_username:
-                if cur_sha:
-                    msg = '`{}` is not a valid commit SHA.'.format(cur_sha)
-                    state.add_comment(
-                        ':scream_cat: {} Please try again with `{}`.'
-                        .format(msg, state.head_sha)
-                    )
+                if realtime and state.try_:
+                    # If we've tried before, the status will be 'success', and
+                    # this new try will not be picked up. Set the status back
+                    # to '' so the try will be run again.
+                    state.set_status('')
+                    # `try-` just resets the `try` bit and doesn't correspond
+                    # to any meaningful labeling events.
+                    state.change_labels(LabelEvent.TRY)
+
+            elif command.action == 'rollup':
+                _assert_try_auth_verified()
+
+                state.rollup = command.rollup_value
+
+                state.save()
+
+            elif command.action == 'force' and realtime:
+                _assert_try_auth_verified()
+
+                if 'buildbot' in repo_cfg:
+                    with buildbot_sess(repo_cfg) as sess:
+                        res = sess.post(
+                            repo_cfg['buildbot']['url'] + '/builders/_selected/stopselected',   # noqa
+                            allow_redirects=False,
+                            data={
+                                'selected': repo_cfg['buildbot']['builders'],
+                                'comments': INTERRUPTED_BY_HOMU_FMT.format(int(time.time())),  # noqa
+                        })
+
+                if 'authzfail' in res.text:
+                    err = 'Authorization failed'
                 else:
-                    state.add_comment(comments.Approved(
-                        sha=state.head_sha,
-                        approver=approver,
-                        bot=my_username,
-                    ))
-                    treeclosed = state.blocked_by_closed_tree()
-                    if treeclosed:
-                        state.add_comment(
-                            ':evergreen_tree: The tree is currently closed for pull requests below priority {}, this pull request will be tested once the tree is reopened'  # noqa
-                            .format(treeclosed)
+                    mat = re.search('(?s)<div class="error">(.*?)</div>', res.text) # noqa
+                    if mat:
+                        err = mat.group(1).strip()
+                        if not err:
+                            err = 'Unknown error'
+                    else:
+                        err = ''
+
+                if err:
+                    state.add_comment(
+                        ':bomb: Buildbot returned an error: `{}`'.format(err)
+                    )
+
+            elif command.action == 'clean' and realtime:
+                _assert_try_auth_verified()
+
+                state.merge_sha = ''
+                state.init_build_res([])
+
+                state.save()
+
+            elif command.action == 'ping' and realtime:
+                if command.ping_type == 'portal':
+                    state.add_comment(
+                        ":cake: {}\n\n![]({})".format(
+                            random.choice(PORTAL_TURRET_DIALOG),
+                            PORTAL_TURRET_IMAGE)
                         )
-                    state.change_labels(LabelEvent.APPROVED)
-
-        elif command.action == 'unapprove':
-            # Allow the author of a pull request to unapprove their own PR. The
-            # author can already perform other actions that effectively
-            # unapprove the PR (change the target branch, push more commits,
-            # etc.) so allowing them to directly unapprove it is also allowed.
-
-            # Because verify_auth has side-effects (especially, it may leave a
-            # comment on the pull request if the user is not authorized), we
-            # need to do the author check BEFORE the verify_auth check.
-            if state.author != username:
-                if not verify_auth(username, repo_label, repo_cfg, state,
-                                   AuthState.REVIEWER, realtime, my_username):
-                    continue
-
-            state.approved_by = ''
-            state.save()
-            if realtime:
-                state.change_labels(LabelEvent.REJECTED)
-
-        elif command.action == 'prioritize':
-            if not verify_auth(username, repo_label, repo_cfg, state,
-                               AuthState.TRY, realtime, my_username):
-                continue
-
-            pvalue = command.priority
-
-            if pvalue > global_cfg['max_priority']:
-                if realtime:
-                    state.add_comment(
-                        ':stop_sign: Priority higher than {} is ignored.'
-                        .format(global_cfg['max_priority'])
-                    )
-                continue
-            state.priority = pvalue
-            state.save()
-
-        elif command.action == 'delegate':
-            if not verify_auth(username, repo_label, repo_cfg, state,
-                               AuthState.REVIEWER, realtime, my_username):
-                continue
-
-            state.delegate = command.delegate_to
-            state.save()
-
-            if realtime:
-                state.add_comment(comments.Delegated(
-                    delegator=username,
-                    delegate=state.delegate
-                ))
-
-        elif command.action == 'undelegate':
-            # TODO: why is this a TRY?
-            if not _try_auth_verified():
-                continue
-            state.delegate = ''
-            state.save()
-
-        elif command.action == 'delegate-author':
-            if not _reviewer_auth_verified():
-                continue
-
-            state.delegate = state.get_repo().pull_request(state.num).user.login  # noqa
-            state.save()
-
-            if realtime:
-                state.add_comment(comments.Delegated(
-                    delegator=username,
-                    delegate=state.delegate
-                ))
-
-        elif command.action == 'retry' and realtime:
-            if not _try_auth_verified():
-                continue
-            state.set_status('')
-            if realtime:
-                event = LabelEvent.TRY if state.try_ else LabelEvent.APPROVED
-                state.record_retry_log(command_src, body)
-                state.change_labels(event)
-
-        elif command.action in ['try', 'untry'] and realtime:
-            if not _try_auth_verified():
-                continue
-            if state.status == '' and state.approved_by:
-                state.add_comment(
-                    ':no_good: '
-                    'Please do not `try` after a pull request has been `r+`ed.'
-                    ' If you need to `try`, unapprove (`r-`) it first.'
-                )
-                continue
-
-            state.try_ = command.action == 'try'
-
-            state.merge_sha = ''
-            state.init_build_res([])
-
-            state.save()
-            if realtime and state.try_:
-                # If we've tried before, the status will be 'success', and this
-                # new try will not be picked up. Set the status back to ''
-                # so the try will be run again.
-                state.set_status('')
-                # `try-` just resets the `try` bit and doesn't correspond to
-                # any meaningful labeling events.
-                state.change_labels(LabelEvent.TRY)
-
-        elif command.action == 'rollup':
-            if not _try_auth_verified():
-                continue
-            state.rollup = command.rollup_value
-
-            state.save()
-
-        elif command.action == 'force' and realtime:
-            if not _try_auth_verified():
-                continue
-            if 'buildbot' in repo_cfg:
-                with buildbot_sess(repo_cfg) as sess:
-                    res = sess.post(
-                        repo_cfg['buildbot']['url'] + '/builders/_selected/stopselected',   # noqa
-                        allow_redirects=False,
-                        data={
-                            'selected': repo_cfg['buildbot']['builders'],
-                            'comments': INTERRUPTED_BY_HOMU_FMT.format(int(time.time())),  # noqa
-                    })
-
-            if 'authzfail' in res.text:
-                err = 'Authorization failed'
-            else:
-                mat = re.search('(?s)<div class="error">(.*?)</div>', res.text)
-                if mat:
-                    err = mat.group(1).strip()
-                    if not err:
-                        err = 'Unknown error'
                 else:
-                    err = ''
+                    state.add_comment(":sleepy: I'm awake I'm awake")
 
-            if err:
-                state.add_comment(
-                    ':bomb: Buildbot returned an error: `{}`'.format(err)
-                )
+            elif command.action == 'treeclosed':
+                _assert_reviewer_auth_verified()
 
-        elif command.action == 'clean' and realtime:
-            if not _try_auth_verified():
-                continue
-            state.merge_sha = ''
-            state.init_build_res([])
+                state.change_treeclosed(command.treeclosed_value, command_src)
+                state.save()
 
-            state.save()
+            elif command.action == 'untreeclosed':
+                _assert_reviewer_auth_verified()
 
-        elif command.action == 'ping' and realtime:
-            if command.ping_type == 'portal':
-                state.add_comment(
-                    ":cake: {}\n\n![]({})".format(
-                        random.choice(PORTAL_TURRET_DIALOG),
-                        PORTAL_TURRET_IMAGE)
-                    )
-            else:
-                state.add_comment(":sleepy: I'm awake I'm awake")
+                state.change_treeclosed(-1, None)
+                state.save()
 
-        elif command.action == 'treeclosed':
-            if not _reviewer_auth_verified():
-                continue
-            state.change_treeclosed(command.treeclosed_value, command_src)
-            state.save()
-
-        elif command.action == 'untreeclosed':
-            if not _reviewer_auth_verified():
-                continue
-            state.change_treeclosed(-1, None)
-            state.save()
-
-        elif command.action == 'hook':
-            hook = command.hook_name
-            hook_cfg = global_cfg['hooks'][hook]
-            if hook_cfg['realtime'] and not realtime:
-                continue
-            if hook_cfg['access'] == "reviewer":
-                if not _reviewer_auth_verified():
+            elif command.action == 'hook':
+                hook = command.hook_name
+                hook_cfg = global_cfg['hooks'][hook]
+                if hook_cfg['realtime'] and not realtime:
                     continue
+                if hook_cfg['access'] == "reviewer":
+                    _assert_reviewer_auth_verified()
+                else:
+                    _assert_try_auth_verified()
+
+                Thread(
+                    target=handle_hook_response,
+                    args=[state, hook_cfg, body, command.hook_extra]
+                ).start()
+
             else:
-                if not _try_auth_verified():
-                    continue
-            Thread(
-                target=handle_hook_response,
-                args=[state, hook_cfg, body, command.hook_extra]
-            ).start()
+                found = False
 
-        else:
-            found = False
+            if found:
+                state_changed = True
 
-        if found:
-            state_changed = True
+        except AuthorizationException as e:
+            if realtime:
+                state.add_comment(e.comment)
 
     return state_changed
 
@@ -1478,9 +1153,9 @@ def synchronize(repo_label, repo_cfg, logger, gh, states, repos, db, mergeable_q
 
     repo = gh.repository(repo_cfg['owner'], repo_cfg['name'])
 
-    db_query(db, 'DELETE FROM pull WHERE repo = ?', [repo_label])
-    db_query(db, 'DELETE FROM build_res WHERE repo = ?', [repo_label])
-    db_query(db, 'DELETE FROM mergeable WHERE repo = ?', [repo_label])
+    db.execute('DELETE FROM pull WHERE repo = ?', [repo_label])
+    db.execute('DELETE FROM build_res WHERE repo = ?', [repo_label])
+    db.execute('DELETE FROM mergeable WHERE repo = ?', [repo_label])
 
     saved_states = {}
     for num, state in states[repo_label].items():
@@ -1492,67 +1167,89 @@ def synchronize(repo_label, repo_cfg, logger, gh, states, repos, db, mergeable_q
     states[repo_label] = {}
     repos[repo_label] = Repository(repo, repo_label, db)
 
+    print("Getting pulls...")
     for pull in repo.iter_pulls(state='open'):
-        db_query(
-            db,
-            'SELECT status FROM pull WHERE repo = ? AND num = ?',
-            [repo_label, pull.number])
-        row = db.fetchone()
-        if row:
-            status = row[0]
-        else:
-            status = ''
-            for info in utils.github_iter_statuses(repo, pull.head.sha):
-                if info.context == 'homu':
-                    status = info.state
-                    break
+#        db.execute(
+#            'SELECT status FROM pull WHERE repo = ? AND num = ?',
+#            [repo_label, pull.number])
+#        row = db.fetchone()
+#        if row:
+#            status = row[0]
+#        else:
+#            status = ''
+#            for info in utils.github_iter_statuses(repo, pull.head.sha):
+#                if info.context == 'homu':
+#                    status = info.state
+#                    break
+
+#        if pull.number in [60966, 60730, 60547, 59312]:
+#            # TODO: WHY DOES THIS HAPPEN!?
+#            # Reported to GitHub. They're working on it.
+#            print("Skipping {} because GraphQL never returns a success!".format(pull.number))
+#            continue
+
+        print("{}/{}#{}".format(repo_cfg['owner'], repo_cfg['name'], pull.number))
+        access_token = global_cfg['github']['access_token']
+        try:
+            response = all_pull_request_events(access_token, repo_cfg['owner'], repo_cfg['name'], pull.number)
+        except:
+            continue
+        status = ''
 
         state = PullReqState(pull.number, pull.head.sha, status, db, repo_label, mergeable_que, gh, repo_cfg['owner'], repo_cfg['name'], repo_cfg.get('labels', {}), repos)  # noqa
-        state.title = pull.title
+        state.cfg = repo_cfg
+        state.title = response.initial_title
         state.body = pull.body
         state.head_ref = pull.head.repo[0] + ':' + pull.head.ref
         state.base_ref = pull.base.ref
-        state.set_mergeable(None)
-        state.assignee = pull.assignee.login if pull.assignee else ''
+        if response.mergeable == 'MERGEABLE':
+            state.set_mergeable(True)
+        elif response.mergeable == 'CONFLICTING':
+            state.set_mergeable(False)
+        else:
+            state.set_mergeable(None)
+        state.assignee = ''
 
-        for comment in pull.iter_comments():
-            if comment.original_commit_id == pull.head.sha:
-                parse_commands(
-                    comment.body,
-                    comment.user.login,
-                    repo_label,
-                    repo_cfg,
-                    state,
-                    my_username,
-                    db,
-                    states,
-                    sha=comment.original_commit_id,
-                    command_src=comment.to_json()['html_url'],
-                    # FIXME switch to `comment.html_url`
-                    #       after updating github3 to 1.3.0+
-                )
-
-        for comment in pull.iter_issue_comments():
-            parse_commands(
-                comment.body,
-                comment.user.login,
-                repo_label,
-                repo_cfg,
-                state,
-                my_username,
-                db,
-                states,
-                command_src=comment.to_json()['html_url'],
-                # FIXME switch to `comment.html_url`
-                #       after updating github3 to 1.3.0+
-            )
-
-        saved_state = saved_states.get(pull.number)
-        if saved_state:
-            for key, val in saved_state.items():
-                setattr(state, key, val)
-
-        state.save()
+#        for comment in pull.iter_comments():
+#            if comment.original_commit_id == pull.head.sha:
+#                parse_commands(
+#                    comment.body,
+#                    comment.user.login,
+#                    repo_label,
+#                    repo_cfg,
+#                    state,
+#                    my_username,
+#                    db,
+#                    states,
+#                    sha=comment.original_commit_id,
+#                    command_src=comment.to_json()['html_url'],
+#                    # FIXME switch to `comment.html_url`
+#                    #       after updating github3 to 1.3.0+
+#                )
+#
+#        for comment in pull.iter_issue_comments():
+#            parse_commands(
+#                comment.body,
+#                comment.user.login,
+#                repo_label,
+#                repo_cfg,
+#                state,
+#                my_username,
+#                db,
+#                states,
+#                command_src=comment.to_json()['html_url'],
+#                # FIXME switch to `comment.html_url`
+#                #       after updating github3 to 1.3.0+
+#            )
+#
+#        saved_state = saved_states.get(pull.number)
+#        if saved_state:
+#            for key, val in saved_state.items():
+#                setattr(state, key, val)
+#
+#        state.save()
+        for event in response.events:
+            state.process_event(event)
 
         states[repo_label][pull.number] = state
 
@@ -1630,9 +1327,10 @@ def main():
     db_conn = sqlite3.connect(db_file,
                               check_same_thread=False,
                               isolation_level=None)
-    db = db_conn.cursor()
+    inner_db = db_conn.cursor()
+    db = LockingDatabase(inner_db)
 
-    db_query(db, '''CREATE TABLE IF NOT EXISTS pull (
+    db.execute('''CREATE TABLE IF NOT EXISTS pull (
         repo TEXT NOT NULL,
         num INTEGER NOT NULL,
         status TEXT NOT NULL,
@@ -1651,7 +1349,7 @@ def main():
         UNIQUE (repo, num)
     )''')
 
-    db_query(db, '''CREATE TABLE IF NOT EXISTS build_res (
+    db.execute('''CREATE TABLE IF NOT EXISTS build_res (
         repo TEXT NOT NULL,
         num INTEGER NOT NULL,
         builder TEXT NOT NULL,
@@ -1661,36 +1359,36 @@ def main():
         UNIQUE (repo, num, builder)
     )''')
 
-    db_query(db, '''CREATE TABLE IF NOT EXISTS mergeable (
+    db.execute('''CREATE TABLE IF NOT EXISTS mergeable (
         repo TEXT NOT NULL,
         num INTEGER NOT NULL,
         mergeable INTEGER NOT NULL,
         UNIQUE (repo, num)
     )''')
-    db_query(db, '''CREATE TABLE IF NOT EXISTS repos (
+    db.execute('''CREATE TABLE IF NOT EXISTS repos (
         repo TEXT NOT NULL,
         treeclosed INTEGER NOT NULL,
         treeclosed_src TEXT,
         UNIQUE (repo)
     )''')
 
-    db_query(db, '''CREATE TABLE IF NOT EXISTS retry_log (
+    db.execute('''CREATE TABLE IF NOT EXISTS retry_log (
         repo TEXT NOT NULL,
         num INTEGER NOT NULL,
         time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
         src TEXT NOT NULL,
         msg TEXT NOT NULL
     )''')
-    db_query(db, '''
+    db.execute('''
         CREATE INDEX IF NOT EXISTS retry_log_time_index ON retry_log
         (repo, time DESC)
     ''')
 
     # manual DB migration :/
     try:
-        db_query(db, 'SELECT treeclosed_src FROM repos LIMIT 0')
+        db.execute('SELECT treeclosed_src FROM repos LIMIT 0')
     except sqlite3.OperationalError:
-        db_query(db, 'ALTER TABLE repos ADD COLUMN treeclosed_src TEXT')
+        db.execute('ALTER TABLE repos ADD COLUMN treeclosed_src TEXT')
 
     for repo_label, repo_cfg in cfg['repo'].items():
         repo_cfgs[repo_label] = repo_cfg
@@ -1699,8 +1397,7 @@ def main():
         repo_states = {}
         repos[repo_label] = Repository(None, repo_label, db)
 
-        db_query(
-            db,
+        db.execute(
             'SELECT num, head_sha, status, title, body, head_ref, base_ref, assignee, approved_by, priority, try_, rollup, delegate, merge_sha FROM pull WHERE repo = ?',   # noqa
             [repo_label])
         for num, head_sha, status, title, body, head_ref, base_ref, assignee, approved_by, priority, try_, rollup, delegate, merge_sha in db.fetchall():  # noqa
@@ -1742,8 +1439,7 @@ def main():
 
         states[repo_label] = repo_states
 
-    db_query(
-        db,
+    db.execute(
         'SELECT repo, num, builder, res, url, merge_sha FROM build_res')
     for repo_label, num, builder, res, url, merge_sha in db.fetchall():
         try:
@@ -1753,8 +1449,7 @@ def main():
             if state.merge_sha != merge_sha:
                 raise KeyError
         except KeyError:
-            db_query(
-                db,
+            db.execute(
                 'DELETE FROM build_res WHERE repo = ? AND num = ? AND builder = ?',   # noqa
                 [repo_label, num, builder])
             continue
@@ -1764,23 +1459,22 @@ def main():
             'url': url,
         }
 
-    db_query(db, 'SELECT repo, num, mergeable FROM mergeable')
+    db.execute('SELECT repo, num, mergeable FROM mergeable')
     for repo_label, num, mergeable in db.fetchall():
         try:
             state = states[repo_label][num]
         except KeyError:
-            db_query(
-                db,
+            db.execute(
                 'DELETE FROM mergeable WHERE repo = ? AND num = ?',
                 [repo_label, num])
             continue
 
         state.mergeable = bool(mergeable) if mergeable is not None else None
 
-    db_query(db, 'SELECT repo FROM pull GROUP BY repo')
+    db.execute('SELECT repo FROM pull GROUP BY repo')
     for repo_label, in db.fetchall():
         if repo_label not in repos:
-            db_query(db, 'DELETE FROM pull WHERE repo = ?', [repo_label])
+            db.execute('DELETE FROM pull WHERE repo = ?', [repo_label])
 
     queue_handler_lock = Lock()
 

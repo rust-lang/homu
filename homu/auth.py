@@ -1,7 +1,27 @@
 import requests
+from enum import IntEnum
 
 
 RUST_TEAM_BASE = "https://team-api.infra.rust-lang.org/v1/"
+
+
+class AuthorizationException(Exception):
+    """
+    The exception thrown when a user is not authorized to perform an action
+    """
+
+    comment = None
+
+    def __init__(self, message, comment):
+        super().__init__(message)
+        self.comment = comment
+
+
+class AuthState(IntEnum):
+    # Higher is more privileged
+    REVIEWER = 3
+    TRY = 2
+    NONE = 1
 
 
 def fetch_rust_team(repo_label, level):
@@ -31,18 +51,14 @@ def verify_level(username, repo_label, repo_cfg, state, toml_keys,
     return authorized
 
 
-def verify(username, repo_label, repo_cfg, state, auth, realtime, my_username):
-    # The import is inside the function to prevent circular imports: main.py
-    # requires auth.py and auth.py requires main.py
-    from .main import AuthState
-
+def assert_authorized(username, repo_label, repo_cfg, state, auth, botname):
     # In some cases (e.g. non-fully-qualified r+) we recursively talk to
     # ourself via a hidden markdown comment in the message. This is so that
     # when re-synchronizing after shutdown we can parse these comments and
     # still know the SHA for the approval.
     #
     # So comments from self should always be allowed
-    if username == my_username:
+    if username == botname:
         return True
 
     authorized = False
@@ -59,14 +75,13 @@ def verify(username, repo_label, repo_cfg, state, auth, realtime, my_username):
     if authorized:
         return True
     else:
-        if realtime:
-            reply = '@{}: :key: Insufficient privileges: '.format(username)
-            if auth == AuthState.REVIEWER:
-                if repo_cfg.get('auth_collaborators', False):
-                    reply += 'Collaborator required'
-                else:
-                    reply += 'Not in reviewers'
-            elif auth == AuthState.TRY:
-                reply += 'not in try users'
-            state.add_comment(reply)
-        return False
+        reply = '@{}: :key: Insufficient privileges: '.format(username)
+        if auth == AuthState.REVIEWER:
+            if repo_cfg.get('auth_collaborators', False):
+                reply += 'Collaborator required'
+            else:
+                reply += 'Not in reviewers'
+        elif auth == AuthState.TRY:
+            reply += 'not in try users'
+        raise AuthorizationException(
+                'Authorization failed for user {}'.format(username), reply)
