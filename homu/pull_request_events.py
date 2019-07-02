@@ -18,88 +18,97 @@ query ($repoName: String!, $repoOwner: String!, $pull: Int!, $after: String) {
           hasNextPage
           endCursor
         }
-        nodes {
-          eventType: __typename
-          ... on PullRequestCommit {
-            commit {
-              oid
+        edges {
+          cursor
+          node {
+            eventType: __typename
+            ... on PullRequestCommit {
+              commit {
+                oid
+              }
             }
-          }
-          ... on AssignedEvent {
-            actor {
-              login
+            ... on AssignedEvent {
+              actor {
+                login
+              }
+              user {
+                login
+              }
             }
-            user {
-              login
+            ... on UnassignedEvent {
+              actor {
+                login
+              }
+              user {
+                login
+              }
             }
-          }
-          ... on UnassignedEvent {
-            actor {
-              login
+            ... on IssueComment {
+              author {
+                login
+              }
+              body
+              publishedAt
             }
-            user {
-              login
+            ... on SubscribedEvent {
+              actor {
+                login
+              }
             }
-          }
-          ... on IssueComment {
-            author {
-              login
+            ... on LabeledEvent {
+              actor {
+                login
+              }
+              label {
+                name
+              }
             }
-            body
-            publishedAt
-          }
-          ... on SubscribedEvent {
-            actor {
-              login
+            ... on UnlabeledEvent {
+              actor {
+                login
+              }
+              label {
+                name
+              }
             }
-          }
-          ... on LabeledEvent {
-            actor {
-              login
+            ... on BaseRefChangedEvent {
+              actor {
+                login
+              }
             }
-            label {
-              name
+            ... on HeadRefForcePushedEvent {
+              actor {
+                login
+              }
+              beforeCommit {
+                oid
+              }
+              afterCommit {
+                oid
+              }
             }
-          }
-          ... on UnlabeledEvent {
-            actor {
-              login
+            ... on RenamedTitleEvent {
+              actor {
+                login
+              }
+              previousTitle
+              currentTitle
             }
-            label {
-              name
-            }
-          }
-          ... on BaseRefChangedEvent {
-            actor {
-              login
-            }
-          }
-          ... on HeadRefForcePushedEvent {
-            actor {
-              login
-            }
-            beforeCommit {
-              oid
-            }
-            afterCommit {
-              oid
-            }
-          }
-          ... on RenamedTitleEvent {
-            actor {
-              login
-            }
-            previousTitle
-            currentTitle
-          }
-          ... on MentionedEvent {
-            actor {
-              login
+            ... on MentionedEvent {
+              actor {
+                login
+              }
             }
           }
         }
       }
     }
+  }
+  rateLimit {
+    limit
+    cost
+    remaining
+    resetAt
   }
 }
 """
@@ -126,7 +135,8 @@ class PullRequestResponse:
 
 
 class PullRequestEvent:
-    def __init__(self, data):
+    def __init__(self, cursor, data):
+        self.cursor = cursor
         self.data = data
 
     def __getitem__(self, key):
@@ -262,7 +272,7 @@ def all(access_token, owner, repo, pull):
 
         pull_request = r['data']['repository']['pullRequest']
         page_info = pull_request['timelineItems']['pageInfo']
-        events = pull_request['timelineItems']['nodes']
+        events = pull_request['timelineItems']['edges']
 
         result.title = pull_request['title']
         result.author = pull_request['author']['login']
@@ -270,7 +280,9 @@ def all(access_token, owner, repo, pull):
         result.head_sha = pull_request['headRefOid']
         result.mergeable = pull_request['mergeable']
 
-        result.events.extend([PullRequestEvent(e) for e in events])
+        result.events.extend([PullRequestEvent(e['cursor'], e['node'])
+                              for e
+                              in events])
 
         if not page_info['hasNextPage']:
             break

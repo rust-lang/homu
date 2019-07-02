@@ -15,6 +15,7 @@ from .auth import (
     AuthorizationException,
     AuthState,
 )
+from enum import Enum
 
 
 class ProcessEventResult:
@@ -40,6 +41,26 @@ def sha_or_blank(sha):
     return sha if re.match(r'^[0-9a-f]+$', sha) else ''
 
 
+
+class BuildState(Enum):
+    """
+    The state of a merge build or a try build
+    """
+    NONE = 'none'
+    PENDING = 'pending'
+    SUCCESS = 'success'
+    FAILURE = 'failure'
+    ERROR = 'error'
+
+
+class ApprovalState(Enum):
+    """
+    The approval state for a pull request.
+    """
+    UNAPPROVED = 'unapproved'
+    APPROVED = 'approved'
+
+
 class PullReqState:
     num = 0
     priority = 0
@@ -50,6 +71,9 @@ class PullReqState:
     base_ref = ''
     assignee = ''
     delegate = ''
+    last_github_cursor = None
+    build_state = BuildState.NONE
+    try_state = BuildState.NONE
 
     def __init__(self, num, head_sha, status, db, repo_label, mergeable_que,
                  gh, owner, name, label_events, repos):
@@ -93,6 +117,13 @@ class PullReqState:
             self.priority,
             self.status,
         )
+
+    @property
+    def approval_state(self):
+        if self.approved_by != '':
+            return ApprovalState.APPROVED
+        else:
+            return ApprovalState.UNAPPROVED
 
     def sort_key(self):
         return [
@@ -339,6 +370,8 @@ class PullReqState:
             applied as a result of this event.
         """
 
+        self.last_github_cursor = event.cursor
+
         # TODO: Don't hardcode botname!
         botname = 'bors'
         # TODO: Don't hardcode hooks!
@@ -356,6 +389,10 @@ class PullReqState:
             # TODO: Do we *always* reset the state?
             result.changed = result.changed or self.status != ''
             self.status = ''
+            result.changed = result.changed or self.try_state != BuildState.NONE
+            self.try_state = BuildState.NONE
+            result.changed = result.changed or self.build_state != BuildState.NONE
+            self.build_state = BuildState.NONE
 
         elif event.event_type == 'HeadRefForcePushedEvent':
             result.changed = self.head_sha != event['afterCommit']['oid']
@@ -363,6 +400,7 @@ class PullReqState:
             # New commits come in: no longer approved
             result.changed = result.changed or self.approved_by != ''
             self.approved_by = ''
+            # TODO: Do we need to reset the state here?
 
         elif event.event_type == 'BaseRefChangedEvent':
             # Base ref changed: no longer approved
@@ -788,33 +826,25 @@ class PullReqState:
             result.changed = True
             self.try_ = False
             self.status = 'pending'
-            # TODO: Something with states
-#            result.changed = True
-#            self.build_state = 'pending'
-            pass
+            self.build_state = BuildState.PENDING
 
         elif state['type'] == 'BuildCompleted':
             result.changed = True
             self.try_ = False
             self.status = 'completed'
-            # TODO: Something with states
-#            result.changed = True
-#            self.build_state = 'completed'
-            pass
+            self.build_state = BuildState.SUCCESS
 
         elif state['type'] == 'BuildFailed':
             result.changed = True
             self.try_ = False
             self.status = 'failure'
-            # TODO: Something with states
-#            result.changed = True
-#            self.build_state = 'failure'
-            pass
+            self.build_state = BuildState.FAILURE
 
         elif state['type'] == 'TryBuildStarted':
             result.changed = True
             self.try_ = True
             self.status = 'pending'
+            self.try_state = BuildState.PENDING
             # TODO: Multiple tries?
             # result.changed = True
             # self.tries.append(PullRequestTry(
@@ -827,6 +857,7 @@ class PullReqState:
         elif state['type'] == 'TryBuildCompleted':
             result.changed = True
             self.status = 'success'
+            self.try_state = BuildState.SUCCESS
             # TODO: Multiple tries?
             # item = next((try_
             #              for try_ in self.tries
@@ -844,6 +875,7 @@ class PullReqState:
         elif state['type'] == 'TryBuildFailed':
             result.changed = True
             self.status = 'failure'
+            self.try_state = BuildState.FAILURE
 
         return result
 

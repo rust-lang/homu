@@ -7,6 +7,8 @@ from homu.consts import (
 
 from homu.pull_req_state import (
     PullReqState,
+    ApprovalState,
+    BuildState,
     # ProcessEventResult,
 )
 from homu.pull_request_events import (
@@ -54,8 +56,14 @@ def assert_comment(pattern, comments):
     return False
 
 
+global_cursor = 1
+
+
 def create_event(event):
-    return PullRequestEvent(event)
+    global global_cursor
+    global_cursor += 1
+    cursor = "{0:010d}".format(global_cursor)
+    return PullRequestEvent(cursor, event)
 
 
 def test_baseline():
@@ -65,6 +73,9 @@ def test_baseline():
 
     state = new_state()
     assert state.get_status() == ''
+    assert state.approval_state == ApprovalState.UNAPPROVED
+    assert state.build_state == BuildState.NONE
+    assert state.try_state == BuildState.NONE
 
 
 def test_current_sha():
@@ -127,6 +138,7 @@ def test_approved(_):
     assert assert_comment(r'Commit abcdef has been approved', result.comments)
     assert state.approved_by == 'ferris'
     assert state.get_status() == 'approved'
+    assert state.approval_state == ApprovalState.APPROVED
 
     # Approval by someone else
     state = new_state(head_sha='abcdef')
@@ -143,6 +155,7 @@ def test_approved(_):
     assert assert_comment(r'Commit abcdef has been approved', result.comments)
     assert state.approved_by == 'someone'
     assert state.get_status() == 'approved'
+    assert state.approval_state == ApprovalState.APPROVED
 
     # Approval with commit sha
     state = new_state(head_sha='abcdef')
@@ -158,6 +171,7 @@ def test_approved(_):
     assert result.changed is True
     assert assert_comment(r'Commit abcdef has been approved', result.comments)
     assert state.get_status() == 'approved'
+    assert state.approval_state == ApprovalState.APPROVED
 
     # Approval with commit sha by bors
     state = new_state(head_sha='abcdef')
@@ -179,6 +193,7 @@ def test_approved(_):
         print(render_comment(comment))
     assert len(result.comments) == 0
     assert state.get_status() == 'approved'
+    assert state.approval_state == ApprovalState.APPROVED
 
     # Approval of WIP
     state = new_state(head_sha='abcdef', title="[WIP] A change")
@@ -194,6 +209,7 @@ def test_approved(_):
     assert result.changed is False
     assert assert_comment(r'still in progress', result.comments)
     assert state.get_status() == ''
+    assert state.approval_state == ApprovalState.UNAPPROVED
 
     # Approval with invalid commit sha
     state = new_state(head_sha='abcdef')
@@ -210,6 +226,7 @@ def test_approved(_):
     assert assert_comment(r'`012345` is not a valid commit SHA',
                           result.comments)
     assert state.get_status() == ''
+    assert state.approval_state == ApprovalState.UNAPPROVED
 
     # Approval of already approved state
     state = new_state(head_sha='abcdef')
@@ -232,10 +249,12 @@ def test_approved(_):
     result1 = state.process_event(event1)
     assert result1.changed is True
     assert state.get_status() == 'approved'
+    assert state.approval_state == ApprovalState.APPROVED
     result2 = state.process_event(event2)
     assert result2.changed is False
     assert assert_comment(r'already approved', result2.comments)
     assert state.get_status() == 'approved'
+    assert state.approval_state == ApprovalState.APPROVED
 
 
 @unittest.mock.patch('homu.pull_req_state.assert_authorized',
@@ -259,6 +278,7 @@ def test_homu_state_approval(_):
     assert len(result.comments) == 0
     assert state.get_status() == 'approved'
     assert state.approved_by == 'ferris'
+    assert state.approval_state == ApprovalState.APPROVED
 
     # Nobody but bors can use homu state
     state = new_state(head_sha='abcdef')
@@ -279,6 +299,7 @@ def test_homu_state_approval(_):
     assert len(result.comments) == 0
     assert state.get_status() == ''
     assert state.approved_by == ''
+    assert state.approval_state == ApprovalState.UNAPPROVED
 
 
 @unittest.mock.patch('homu.pull_req_state.assert_authorized',
@@ -304,6 +325,8 @@ def test_tried(_):
     assert result.changed is True
     assert state.try_ is True
     assert state.get_status() == 'pending'
+    assert state.build_state == BuildState.NONE
+    assert state.try_state == BuildState.PENDING
 
     result = state.process_event(create_event({
         'eventType': 'IssueComment',
@@ -320,6 +343,8 @@ def test_tried(_):
     assert result.changed is True
     assert state.try_ is True
     assert state.get_status() == 'success'
+    assert state.build_state == BuildState.NONE
+    assert state.try_state == BuildState.SUCCESS
 
 
 @unittest.mock.patch('homu.pull_req_state.assert_authorized',
@@ -345,6 +370,8 @@ def test_try_failed(_):
     assert result.changed is True
     assert state.try_ is True
     assert state.get_status() == 'pending'
+    assert state.build_state == BuildState.NONE
+    assert state.try_state == BuildState.PENDING
 
     result = state.process_event(create_event({
         'eventType': 'IssueComment',
@@ -361,6 +388,8 @@ def test_try_failed(_):
     assert result.changed is True
     assert state.try_ is True
     assert state.get_status() == 'failure'
+    assert state.build_state == BuildState.NONE
+    assert state.try_state == BuildState.FAILURE
 
 
 @unittest.mock.patch('homu.pull_req_state.assert_authorized',
@@ -387,6 +416,7 @@ def test_try_reset_by_push(_):
     assert result.changed is True
     assert state.try_ is True
     assert state.get_status() == 'pending'
+    assert state.try_state == BuildState.PENDING
 
     result = state.process_event(create_event({
         'eventType': 'IssueComment',
@@ -403,6 +433,7 @@ def test_try_reset_by_push(_):
     assert result.changed is True
     assert state.try_ is True
     assert state.get_status() == 'success'
+    assert state.try_state == BuildState.SUCCESS
 
     result = state.process_event(create_event({
         'eventType': 'PullRequestCommit',
@@ -414,6 +445,7 @@ def test_try_reset_by_push(_):
     assert result.changed is True
     assert state.try_ is False
     assert state.get_status() == ''
+    assert state.try_state == BuildState.NONE
 
 
 @unittest.mock.patch('homu.pull_req_state.assert_authorized',
@@ -441,6 +473,8 @@ def test_build(_):
     assert result.changed is True
     assert state.try_ is False
     assert state.get_status() == 'pending'
+    assert state.build_state == BuildState.PENDING
+    assert state.try_state == BuildState.NONE
 
     result = state.process_event(create_event({
         'eventType': 'IssueComment',
@@ -457,6 +491,8 @@ def test_build(_):
     assert result.changed is True
     assert state.try_ is False
     assert state.get_status() == 'completed'
+    assert state.build_state == BuildState.SUCCESS
+    assert state.try_state == BuildState.NONE
 
 
 @unittest.mock.patch('homu.pull_req_state.assert_authorized',
@@ -482,6 +518,8 @@ def test_build_failed(_):
     assert result.changed is True
     assert state.try_ is False
     assert state.get_status() == 'pending'
+    assert state.build_state == BuildState.PENDING
+    assert state.try_state == BuildState.NONE
 
     result = state.process_event(create_event({
         'eventType': 'IssueComment',
@@ -498,6 +536,8 @@ def test_build_failed(_):
     assert result.changed is True
     assert state.try_ is False
     assert state.get_status() == 'failure'
+    assert state.build_state == BuildState.FAILURE
+    assert state.try_state == BuildState.NONE
 
 
 #def test_tried_and_approved():
@@ -526,6 +566,7 @@ def test_approved_unapproved(_):
         'publishedAt': '1985-04-21T00:00:00Z',
     }))
     assert state.get_status() != ''
+    assert state.approval_state == ApprovalState.APPROVED
 
     result = state.process_event(create_event({
         'eventType': 'IssueComment',
@@ -537,6 +578,7 @@ def test_approved_unapproved(_):
     }))
     assert state.get_status() == ''
     assert state.approved_by == ''
+    assert state.approval_state == ApprovalState.UNAPPROVED
     assert result.changed is True
     assert len(result.label_events) == 1
     assert result.label_events[0] == LabelEvent.REJECTED
@@ -580,6 +622,7 @@ def test_approved_changed_push(_):
         'body': '@bors r+',
         'publishedAt': '1985-04-21T00:00:00Z',
     }))
+    assert state.approval_state == ApprovalState.APPROVED
     state.process_event(create_event({
         'eventType': 'HeadRefForcePushedEvent',
         'actor': {
@@ -595,6 +638,7 @@ def test_approved_changed_push(_):
 
     assert state.get_status() == ''
     assert state.head_sha == '012345'
+    assert state.approval_state == ApprovalState.UNAPPROVED
 
 
 @unittest.mock.patch('homu.pull_req_state.assert_authorized',
@@ -614,6 +658,7 @@ def test_approved_changed_base(_):
         'body': '@bors r+',
         'publishedAt': '1985-04-21T00:00:00Z',
     }))
+    assert state.approval_state == ApprovalState.APPROVED
     state.process_event(create_event({
         'eventType': 'BaseRefChangedEvent',
         'actor': {
@@ -622,6 +667,7 @@ def test_approved_changed_base(_):
     }))
 
     assert state.get_status() == ''
+    assert state.approval_state == ApprovalState.UNAPPROVED
 
 
 #def test_pending():
