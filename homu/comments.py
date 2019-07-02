@@ -113,8 +113,8 @@ class TryBuildCompleted(Comment):
         urls = ", ".join(
             "[%s](%s)" % kv for kv in sorted(self.builders.items())
         )
-        return ":sunny: Try build successful - %s\nBuild commit: %s" % (
-            urls, self.merge_sha,
+        return ":sunny: Try build successful - %s\nBuild commit: %s (`%s`)" % (
+            urls, self.merge_sha, self.merge_sha,
         )
 
 
