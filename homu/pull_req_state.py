@@ -675,18 +675,21 @@ class PullReqState:
 #                        delegate=state.delegate
 #                    ))
 #
-#            elif command.action == 'retry' and realtime:
-#                _assert_try_auth_verified()
-#
-#                state.set_status('')
-#                if realtime:
-#                    if state.try_:
-#                        event = LabelEvent.TRY
-#                    else:
-#                        event = LabelEvent.APPROVED
-#                    state.record_retry_log(command_src, body, global_cfg)
-#                    state.change_labels(event)
-#
+            elif command.action == 'retry':
+                _assert_try_auth_verified()
+
+                self.status = ''
+                if self.try_:
+                    event = LabelEvent.TRY
+                    self.try_state = BuildState.NONE
+                else:
+                    event = LabelEvent.APPROVED
+                    self.build_state = BuildState.NONE
+                # TODO: re-enable the retry log!
+                #self.record_retry_log(command_src, body, global_cfg)
+                result.label_events.append(event)
+                result.changed = True
+
 #            elif command.action in ['try', 'untry'] and realtime:
 #                _assert_try_auth_verified()
 #

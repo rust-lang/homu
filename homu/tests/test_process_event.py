@@ -540,6 +540,52 @@ def test_build_failed(_):
     assert state.try_state == BuildState.NONE
 
 
+@unittest.mock.patch('homu.pull_req_state.assert_authorized',
+                     side_effect=return_true)
+def test_build_retry_cancels(_):
+    """
+    Test that a pull request that has started a build and then gets a 'retry'
+    command cancels the build.
+    """
+
+    state = new_state()
+    result = state.process_event(create_event({
+        'eventType': 'IssueComment',
+        'author': {
+            'login': 'bors',
+        },
+        'body': '''
+            :hourglass: Building commit 065151f8b2c31d9e4ddd34aaf8d3263a997f5cfe with merge 330c85d9270b32d7703ebefc337eb37ae959f741...
+            <!-- homu: {"type":"BuildStarted","head_sha":"065151f8b2c31d9e4ddd34aaf8d3263a997f5cfe","merge_sha":"330c85d9270b32d7703ebefc337eb37ae959f741"} -->
+        ''', # noqa
+        'publishedAt': '1985-04-21T00:00:00Z',
+    }))
+
+    assert result.changed is True
+    assert state.try_ is False
+    assert state.get_status() == 'pending'
+    assert state.build_state == BuildState.PENDING
+    assert state.try_state == BuildState.NONE
+
+    result = state.process_event(create_event({
+        'eventType': 'IssueComment',
+        'author': {
+            'login': 'ferris',
+        },
+        'body': '''
+            @bors retry
+        ''',
+        'publishedAt': '1985-04-21T00:01:00Z',
+    }))
+
+    assert result.changed is True
+    assert state.try_ is False
+    assert state.get_status() == ''
+    assert state.build_state == BuildState.NONE
+    assert state.try_state == BuildState.NONE
+    # TODO: does issuing this retry emit label events?
+
+
 #def test_tried_and_approved():
 #    """
 #    Test that a pull request that has been approved AND tried shows up as
