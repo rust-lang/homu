@@ -880,6 +880,12 @@ class PullReqState:
             self.status = 'failure'
             self.try_state = BuildState.FAILURE
 
+        elif state['type'] == 'TimedOut':
+            result.changed = True
+            self.status = 'failure'
+            # TODO: Do we need to determine if a try or a build failed?
+            self.try_state = BuildState.FAILURE
+
         return result
 
     @property
