@@ -61,6 +61,12 @@ class ApprovalState(Enum):
     APPROVED = 'approved'
 
 
+class GitHubPullRequestState(Enum):
+    CLOSED = 'closed'
+    MERGED = 'merged'
+    OPEN = 'open'
+
+
 class PullReqState:
     num = 0
     priority = 0
@@ -74,6 +80,7 @@ class PullReqState:
     last_github_cursor = None
     build_state = BuildState.NONE
     try_state = BuildState.NONE
+    github_pr_state = GitHubPullRequestState.OPEN
 
     def __init__(self, num, head_sha, status, db, repo_label, mergeable_que,
                  gh, owner, name, label_events, repos):
@@ -435,23 +442,20 @@ class PullReqState:
             pass
 
         elif event.event_type == 'MergedEvent':
-            # TODO: Something here.
-            #result.changed = self.github_state != 'merged'
-            #self.github_state = 'merged'
-            pass
+            # TODO: Test.
+            changed = self.github_pr_state != GitHubPullRequestState.MERGED
+            self.github_pr_state = GitHubPullRequestState.MERGED
 
         elif event.event_type == 'ClosedEvent':
-            # TODO: Something here.
-            #if self.github_state != 'merged':
-            #    changed = self.github_state != 'closed'
-            #    self.github_state = 'closed'
-            pass
+            # TODO: Test.
+            if self.github_pr_state != GitHubPullRequestState.MERGED:
+                changed = self.github_pr_state != GitHubPullRequestState.CLOSED
+                self.github_pr_state = GitHubPullRequestState.CLOSED
 
         elif event.event_type == 'ReopenedEvent':
-            # TODO: Something here.
-            #changed = self.github_state != 'open'
-            #self.github_state = 'open'
-            pass
+            # TODO: Test.
+            changed = self.github_pr_state != GitHubPullRequestState.OPEN
+            self.github_pr_state = GitHubPullRequestState.OPEN
 
         elif event.event_type in [
                 'SubscribedEvent',
