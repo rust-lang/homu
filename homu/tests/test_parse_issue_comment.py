@@ -497,6 +497,20 @@ def test_multiple_hooks():
     assert thirdhook_commands[0].hook_extra is None
 
 
+def test_similar_name():
+    """
+    Test that a username that starts with 'bors' doesn't trigger.
+    """
+
+    author = "jack"
+    body = """
+    @bors-servo r+
+    """
+    commands = parse_issue_comment(author, body, commit, "bors")
+
+    assert len(commands) == 0
+
+
 def test_parse_up_to_first_unknown_word():
     """
     Test that when parsing, once we arrive at an unknown word, we stop parsing
