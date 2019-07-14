@@ -450,14 +450,16 @@ PORTAL_TURRET_DIALOG = ["Target acquired", "Activated", "There you are"]
 PORTAL_TURRET_IMAGE = "https://cloud.githubusercontent.com/assets/1617736/22222924/c07b2a1c-e16d-11e6-91b3-ac659550585c.png"  # noqa
 
 
-def parse_commands(body, username, repo_label, repo_cfg, state, my_username,
-                   db, states, *, realtime=False, sha='', command_src=''):
+def parse_commands(body, username, user_id, repo_label, repo_cfg, state,
+                   my_username, db, states, *, realtime=False, sha='',
+                   command_src=''):
     global global_cfg
     state_changed = False
 
     _reviewer_auth_verified = functools.partial(
         verify_auth,
         username,
+        user_id,
         repo_label,
         repo_cfg,
         state,
@@ -468,6 +470,7 @@ def parse_commands(body, username, repo_label, repo_cfg, state, my_username,
     _try_auth_verified = functools.partial(
         verify_auth,
         username,
+        user_id,
         repo_label,
         repo_cfg,
         state,
@@ -584,8 +587,9 @@ def parse_commands(body, username, repo_label, repo_cfg, state, my_username,
             # comment on the pull request if the user is not authorized), we
             # need to do the author check BEFORE the verify_auth check.
             if state.author != username:
-                if not verify_auth(username, repo_label, repo_cfg, state,
-                                   AuthState.REVIEWER, realtime, my_username):
+                if not verify_auth(username, user_id, repo_label, repo_cfg,
+                                   state, AuthState.REVIEWER, realtime,
+                                   my_username):
                     continue
 
             state.approved_by = ''
@@ -594,7 +598,7 @@ def parse_commands(body, username, repo_label, repo_cfg, state, my_username,
                 state.change_labels(LabelEvent.REJECTED)
 
         elif command.action == 'prioritize':
-            if not verify_auth(username, repo_label, repo_cfg, state,
+            if not verify_auth(username, user_id, repo_label, repo_cfg, state,
                                AuthState.TRY, realtime, my_username):
                 continue
 
@@ -611,7 +615,7 @@ def parse_commands(body, username, repo_label, repo_cfg, state, my_username,
             state.save()
 
         elif command.action == 'delegate':
-            if not verify_auth(username, repo_label, repo_cfg, state,
+            if not verify_auth(username, user_id, repo_label, repo_cfg, state,
                                AuthState.REVIEWER, realtime, my_username):
                 continue
 
@@ -1520,6 +1524,7 @@ def synchronize(repo_label, repo_cfg, logger, gh, states, repos, db, mergeable_q
                 parse_commands(
                     comment.body,
                     comment.user.login,
+                    comment.user.id,
                     repo_label,
                     repo_cfg,
                     state,
@@ -1536,6 +1541,7 @@ def synchronize(repo_label, repo_cfg, logger, gh, states, repos, db, mergeable_q
             parse_commands(
                 comment.body,
                 comment.user.login,
+                comment.user.id,
                 repo_label,
                 repo_cfg,
                 state,
