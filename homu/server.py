@@ -378,6 +378,7 @@ def github():
             pull_num = info['pull_request']['number']
             body = info['comment']['body']
             username = info['sender']['login']
+            user_id = info['sender']['id']
 
             state = g.states[repo_label].get(pull_num)
             if state:
@@ -387,6 +388,7 @@ def github():
                 if parse_commands(
                     body,
                     username,
+                    user_id,
                     repo_label,
                     repo_cfg,
                     state,
@@ -435,6 +437,7 @@ def github():
                     found = parse_commands(
                         c.body,
                         c.user.login,
+                        c.user.id,
                         repo_label,
                         repo_cfg,
                         state,
@@ -546,6 +549,7 @@ def github():
     elif event_type == 'issue_comment':
         body = info['comment']['body']
         username = info['comment']['user']['login']
+        user_id = info['comment']['user']['id']
         pull_num = info['issue']['number']
 
         state = g.states[repo_label].get(pull_num)
@@ -557,6 +561,7 @@ def github():
             if parse_commands(
                 body,
                 username,
+                user_id,
                 repo_label,
                 repo_cfg,
                 state,

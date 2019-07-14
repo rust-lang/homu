@@ -10,19 +10,19 @@ def fetch_rust_team(repo_label, level):
     try:
         resp = requests.get(url)
         resp.raise_for_status()
-        return resp.json()["github_users"]
+        return resp.json()["github_ids"]
     except requests.exceptions.RequestException as e:
         print("error while fetching " + url + ": " + str(e))
         return []
 
 
-def verify_level(username, repo_label, repo_cfg, state, toml_keys,
+def verify_level(username, user_id, repo_label, repo_cfg, state, toml_keys,
                  rust_team_level):
     authorized = False
     if repo_cfg.get('auth_collaborators', False):
         authorized = state.get_repo().is_collaborator(username)
     if repo_cfg.get('rust_team', False):
-        authorized = username in fetch_rust_team(repo_label, rust_team_level)
+        authorized = user_id in fetch_rust_team(repo_label, rust_team_level)
     if not authorized:
         authorized = username.lower() == state.delegate.lower()
     for toml_key in toml_keys:
@@ -31,7 +31,8 @@ def verify_level(username, repo_label, repo_cfg, state, toml_keys,
     return authorized
 
 
-def verify(username, repo_label, repo_cfg, state, auth, realtime, my_username):
+def verify(username, user_id, repo_label, repo_cfg, state, auth, realtime,
+           my_username):
     # The import is inside the function to prevent circular imports: main.py
     # requires auth.py and auth.py requires main.py
     from .main import AuthState
@@ -48,12 +49,13 @@ def verify(username, repo_label, repo_cfg, state, auth, realtime, my_username):
     authorized = False
     if auth == AuthState.REVIEWER:
         authorized = verify_level(
-            username, repo_label, repo_cfg, state, ['reviewers'], 'review',
+            username, user_id, repo_label, repo_cfg, state, ['reviewers'],
+            'review',
         )
     elif auth == AuthState.TRY:
         authorized = verify_level(
-            username, repo_label, repo_cfg, state, ['reviewers', 'try_users'],
-            'try',
+            username, user_id, repo_label, repo_cfg, state,
+            ['reviewers', 'try_users'], 'try',
         )
 
     if authorized:
