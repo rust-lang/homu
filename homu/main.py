@@ -34,7 +34,7 @@ import shlex
 import random
 from .repository import Repository
 from .pull_req_state import PullReqState
-from .pull_request_events import all as all_pull_request_events
+from .github_v4 import GitHubV4
 
 global_cfg = {}
 
@@ -1027,6 +1027,8 @@ def start_build_or_rebuild(state, repo_cfgs, *args):
 def process_queue(states, repos, repo_cfgs, logger, buildbot_slots, db,
                   git_cfg):
     for repo_label, repo in repos.items():
+        if repo_label not in states:
+            states[repo_label] = {}
         repo_states = sorted(states[repo_label].values())
 
         for state in repo_states:
@@ -1110,6 +1112,8 @@ def synchronize(repository, logger, gh, states, db, mergeable_que, my_username, 
     repo_label = repository.repo_label
     logger.info('Synchronizing {}...'.format(repo_label))
 
+    ghv4 = gh.v4
+
     db.execute('DELETE FROM pull WHERE repo = ?', [repo_label])
     db.execute('DELETE FROM build_res WHERE repo = ?', [repo_label])
     db.execute('DELETE FROM mergeable WHERE repo = ?', [repo_label])
@@ -1122,6 +1126,8 @@ def synchronize(repository, logger, gh, states, db, mergeable_que, my_username, 
         }
 
     states[repo_label] = {}
+
+    repository = repos[repo_label]
 
     print("Getting pulls...")
     for pull in repo.iter_pulls(state='open'):
@@ -1145,9 +1151,9 @@ def synchronize(repository, logger, gh, states, db, mergeable_que, my_username, 
 #            continue
 
         print("{}/{}#{}".format(repository.owner, repository.name, pull.number))
-        access_token = global_cfg['github']['access_token']
+        #access_token = global_cfg['github']['access_token']
         try:
-            response = all_pull_request_events(access_token, repository.owner, repository.name, pull.number)
+            response = ghv4.pull_request(repository.owner, repository.name, pull.number)
         except:
             continue
         status = ''
@@ -1255,6 +1261,7 @@ def main():
     global_cfg = cfg
 
     gh = github3.login(token=cfg['github']['access_token'])
+    gh.v4 = GitHubV4(cfg['github']['access_token'])
     user = gh.user()
     cfg_git = cfg.get('git', {})
     user_email = cfg_git.get('email')
