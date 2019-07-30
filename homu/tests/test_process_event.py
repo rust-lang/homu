@@ -19,21 +19,20 @@ from homu.pull_request_events import (
 def new_state(num=1, head_sha='abcdef', status='', title='A change'):
     repo = unittest.mock.Mock()
     repo.treeclosed = False
+    repo.repo_label = 'test'
+    repo.owner = 'test-org'
+    repo.name = 'test-repo'
+    repo.gh = None
+    repo.github_repo = None
 
     state = PullReqState(
+            repository=repo,
             num=num,
             head_sha=head_sha,
             status=status,
             db=None,
-            repo_label='test',
             mergeable_que=None,
-            gh=None,
-            owner='test-org',
-            name='test-repo',
-            label_events=[],
-            repos={
-                'test': repo,
-            })
+            author='ferris')
 
     state.title = title
     state.cfg = {}

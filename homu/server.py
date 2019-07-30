@@ -358,6 +358,7 @@ def github():
     owner = owner_info.get('login') or owner_info['name']
     repo_label = g.repo_labels[owner, info['repository']['name']]
     repo_cfg = g.repo_cfgs[repo_label]
+    repository = g.repos[repo_label]
 
     hmac_method, hmac_sig = request.headers['X-Hub-Signature'].split('=')
     if hmac_sig != hmac.new(
@@ -413,12 +414,7 @@ def github():
             state.save()
 
         elif action in ['opened', 'reopened']:
-            state = PullReqState(pull_num, head_sha, '', g.db, repo_label,
-                                 g.mergeable_que, g.gh,
-                                 info['repository']['owner']['login'],
-                                 info['repository']['name'],
-                                 repo_cfg.get('labels', {}),
-                                 g.repos)
+            state = PullReqState(repository, pull_num, head_sha, '', g.db, g.mergeable_que, info['pull_request']['user']['login'])
             state.title = info['pull_request']['title']
             state.body = info['pull_request']['body']
             state.head_ref = info['pull_request']['head']['repo']['owner']['login'] + ':' + info['pull_request']['head']['ref']  # noqa
@@ -856,7 +852,7 @@ def synch(user_gh, state, repo_label, repo_cfg, repo):
             abort(400, 'Homu does not have write access on the repository')
         raise e
 
-    Thread(target=synchronize, args=[repo_label, repo_cfg, g.logger,
+    Thread(target=synchronize, args=[repository, g.logger,
                                      g.gh, g.states, g.repos, g.db,
                                      g.mergeable_que, g.my_username,
                                      g.repo_labels]).start()
@@ -866,9 +862,9 @@ def synch(user_gh, state, repo_label, repo_cfg, repo):
 
 def synch_all():
     @retry(wait_exponential_multiplier=1000, wait_exponential_max=600000)
-    def sync_repo(repo_label, g):
+    def sync_repo(repository, g):
         try:
-            synchronize(repo_label, g.repo_cfgs[repo_label], g.logger, g.gh,
+            synchronize(repository, g.logger, g.gh,
                         g.states, g.repos, g.db, g.mergeable_que,
                         g.my_username, g.repo_labels)
         except Exception:
@@ -876,8 +872,8 @@ def synch_all():
             traceback.print_exc()
             raise
 
-    for repo_label in g.repos:
-        sync_repo(repo_label, g)
+    for repo_label, repository in g.repos:
+        sync_repo(repository, g)
     print('* Done synchronizing all')
 
 

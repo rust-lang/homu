@@ -32,6 +32,7 @@ import subprocess
 from .git_helper import SSH_KEY_FILE
 import shlex
 import random
+from .repository import Repository
 from .pull_req_state import PullReqState
 from .pull_request_events import all as all_pull_request_events
 
@@ -69,49 +70,6 @@ class LockingDatabase:
 
     def fetchall(self, *args):
         return self.db.fetchall(*args)
-
-
-class Repository:
-    treeclosed = -1
-    treeclosed_src = None
-    gh = None
-    label = None
-    db = None
-
-    def __init__(self, gh, repo_label, db):
-        self.gh = gh
-        self.repo_label = repo_label
-        self.db = db
-        db.execute(
-            'SELECT treeclosed, treeclosed_src FROM repos WHERE repo = ?',
-            [repo_label]
-        )
-        row = db.fetchone()
-        if row:
-            self.treeclosed = row[0]
-            self.treeclosed_src = row[1]
-        else:
-            self.treeclosed = -1
-            self.treeclosed_src = None
-
-    def update_treeclosed(self, value, src):
-        self.treeclosed = value
-        self.treeclosed_src = src
-        self.db.execute(
-            'DELETE FROM repos where repo = ?',
-            [self.repo_label]
-        )
-        if value > 0:
-            self.db.execute(
-                '''
-                    INSERT INTO repos (repo, treeclosed, treeclosed_src)
-                    VALUES (?, ?, ?)
-                ''',
-                [self.repo_label, value, src]
-            )
-
-    def __lt__(self, other):
-        return self.gh < other.gh
 
 
 def sha_cmp(short, full):
@@ -1148,10 +1106,9 @@ def fetch_mergeability(mergeable_que):
             mergeable_que.task_done()
 
 
-def synchronize(repo_label, repo_cfg, logger, gh, states, repos, db, mergeable_que, my_username, repo_labels):  # noqa
+def synchronize(repository, logger, gh, states, db, mergeable_que, my_username, repo_labels):  # noqa
+    repo_label = repository.repo_label
     logger.info('Synchronizing {}...'.format(repo_label))
-
-    repo = gh.repository(repo_cfg['owner'], repo_cfg['name'])
 
     db.execute('DELETE FROM pull WHERE repo = ?', [repo_label])
     db.execute('DELETE FROM build_res WHERE repo = ?', [repo_label])
@@ -1165,7 +1122,6 @@ def synchronize(repo_label, repo_cfg, logger, gh, states, repos, db, mergeable_q
         }
 
     states[repo_label] = {}
-    repos[repo_label] = Repository(repo, repo_label, db)
 
     print("Getting pulls...")
     for pull in repo.iter_pulls(state='open'):
@@ -1188,15 +1144,15 @@ def synchronize(repo_label, repo_cfg, logger, gh, states, repos, db, mergeable_q
 #            print("Skipping {} because GraphQL never returns a success!".format(pull.number))
 #            continue
 
-        print("{}/{}#{}".format(repo_cfg['owner'], repo_cfg['name'], pull.number))
+        print("{}/{}#{}".format(repository.owner, repository.name, pull.number))
         access_token = global_cfg['github']['access_token']
         try:
-            response = all_pull_request_events(access_token, repo_cfg['owner'], repo_cfg['name'], pull.number)
+            response = all_pull_request_events(access_token, repository.owner, repository.name, pull.number)
         except:
             continue
         status = ''
 
-        state = PullReqState(pull.number, pull.head.sha, status, db, repo_label, mergeable_que, gh, repo_cfg['owner'], repo_cfg['name'], repo_cfg.get('labels', {}), repos)  # noqa
+        state = PullReqState(repository, pull.number, pull.head.sha, status, db, mergeable_que, pull.user.login)
         state.cfg = repo_cfg
         state.title = response.initial_title
         state.body = pull.body
@@ -1395,81 +1351,8 @@ def main():
         repo_labels[repo_cfg['owner'], repo_cfg['name']] = repo_label
 
         repo_states = {}
-        repos[repo_label] = Repository(None, repo_label, db)
-
-        db.execute(
-            'SELECT num, head_sha, status, title, body, head_ref, base_ref, assignee, approved_by, priority, try_, rollup, delegate, merge_sha FROM pull WHERE repo = ?',   # noqa
-            [repo_label])
-        for num, head_sha, status, title, body, head_ref, base_ref, assignee, approved_by, priority, try_, rollup, delegate, merge_sha in db.fetchall():  # noqa
-            state = PullReqState(num, head_sha, status, db, repo_label, mergeable_que, gh, repo_cfg['owner'], repo_cfg['name'], repo_cfg.get('labels', {}), repos)  # noqa
-            state.title = title
-            state.body = body
-            state.head_ref = head_ref
-            state.base_ref = base_ref
-            state.assignee = assignee
-
-            state.approved_by = approved_by
-            state.priority = int(priority)
-            state.try_ = bool(try_)
-            state.rollup = rollup
-            state.delegate = delegate
-            builders = []
-            if merge_sha:
-                if 'buildbot' in repo_cfg:
-                    builders += repo_cfg['buildbot']['builders']
-                if 'travis' in repo_cfg:
-                    builders += ['travis']
-                if 'status' in repo_cfg:
-                    builders += ['status-' + key for key, value in repo_cfg['status'].items() if 'context' in value]  # noqa
-                if 'checks' in repo_cfg:
-                    builders += ['checks-' + key for key, value in repo_cfg['checks'].items() if 'name' in value]  # noqa
-                if len(builders) == 0:
-                    raise RuntimeError('Invalid configuration')
-
-                state.init_build_res(builders, use_db=False)
-                state.merge_sha = merge_sha
-
-            elif state.status == 'pending':
-                # FIXME: There might be a better solution
-                state.status = ''
-
-                state.save()
-
-            repo_states[num] = state
-
-        states[repo_label] = repo_states
-
-    db.execute(
-        'SELECT repo, num, builder, res, url, merge_sha FROM build_res')
-    for repo_label, num, builder, res, url, merge_sha in db.fetchall():
-        try:
-            state = states[repo_label][num]
-            if builder not in state.build_res:
-                raise KeyError
-            if state.merge_sha != merge_sha:
-                raise KeyError
-        except KeyError:
-            db.execute(
-                'DELETE FROM build_res WHERE repo = ? AND num = ? AND builder = ?',   # noqa
-                [repo_label, num, builder])
-            continue
-
-        state.build_res[builder] = {
-            'res': bool(res) if res is not None else None,
-            'url': url,
-        }
-
-    db.execute('SELECT repo, num, mergeable FROM mergeable')
-    for repo_label, num, mergeable in db.fetchall():
-        try:
-            state = states[repo_label][num]
-        except KeyError:
-            db.execute(
-                'DELETE FROM mergeable WHERE repo = ? AND num = ?',
-                [repo_label, num])
-            continue
-
-        state.mergeable = bool(mergeable) if mergeable is not None else None
+        repository = Repository(gh, repo_label, db, repo_cfg['owner'], repo_cfg['name'], repo_cfg)
+        repos[repo_label] = repository
 
     db.execute('SELECT repo FROM pull GROUP BY repo')
     for repo_label, in db.fetchall():

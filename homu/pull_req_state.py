@@ -82,23 +82,38 @@ class PullReqState:
     try_state = BuildState.NONE
     github_pr_state = GitHubPullRequestState.OPEN
 
-    def __init__(self, num, head_sha, status, db, repo_label, mergeable_que,
-                 gh, owner, name, label_events, repos):
+    def __init__(self, repository, num, head_sha, status, db, mergeable_que, author):
         self.head_advanced('', use_db=False)
 
+        self.repository = repository
         self.num = num
         self.head_sha = head_sha
         self.status = status
         self.db = db
-        self.repo_label = repo_label
         self.mergeable_que = mergeable_que
-        self.gh = gh
-        self.owner = owner
-        self.name = name
-        self.repos = repos
+        self.author = author
         self.timeout_timer = None
         self.test_started = time.time()
-        self.label_events = label_events
+
+    @property
+    def repo_label(self):
+        return self.repository.repo_label
+
+    @property
+    def owner(self):
+        return self.repository.owner
+
+    @property
+    def name(self):
+        return self.repository.name
+
+    @property
+    def gh(self):
+        return self.repository.gh
+
+    @property
+    def label_events(self):
+        return self.repository.cfg.get('labels', {})
 
     def head_advanced(self, head_sha, *, use_db=True):
         self.head_sha = head_sha
@@ -255,14 +270,7 @@ class PullReqState:
                          for builder, data in self.build_res.items())
 
     def get_repo(self):
-        repo = self.repos[self.repo_label].gh
-        if not repo:
-            repo = self.gh.repository(self.owner, self.name)
-            self.repos[self.repo_label].gh = repo
-
-            assert repo.owner.login == self.owner
-            assert repo.name == self.name
-        return repo
+        return self.repository.github_repo
 
     def save(self):
         self.db.execute(
@@ -308,10 +316,10 @@ class PullReqState:
             issue.edit(title=title)
 
     def change_treeclosed(self, value, src):
-        self.repos[self.repo_label].update_treeclosed(value, src)
+        self.repository.update_treeclosed(value, src)
 
     def blocked_by_closed_tree(self):
-        treeclosed = self.repos[self.repo_label].treeclosed
+        treeclosed = self.repository.treeclosed
         return treeclosed if self.priority < treeclosed else None
 
     def start_testing(self, timeout):
@@ -891,10 +899,3 @@ class PullReqState:
             self.try_state = BuildState.FAILURE
 
         return result
-
-    @property
-    def author(self):
-        """
-        Get the GitHub login name of the author of the pull request
-        """
-        return self.get_issue().user.login
