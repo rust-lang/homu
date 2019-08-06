@@ -68,6 +68,21 @@ def test_r_equals():
     assert command.actor == 'jill'
 
 
+def test_r_equals_at_user():
+    """
+    @bors r=@jill
+    """
+
+    author = "jack"
+    body = "@bors r=@jill"
+    commands = parse_issue_comment(author, body, commit, "bors")
+
+    assert len(commands) == 1
+    command = commands[0]
+    assert command.action == 'approve'
+    assert command.actor == 'jill'
+
+
 def test_hidden_r_equals():
     author = "bors"
     body = """
