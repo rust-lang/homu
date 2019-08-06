@@ -1,6 +1,10 @@
 from itertools import chain
 import re
 
+def strip_at_prefix(input):
+    if input.startswith("@"):
+        return input[1:]
+    return input
 
 class IssueCommentCommand:
     """
@@ -16,7 +20,7 @@ class IssueCommentCommand:
     def approve(cls, approver, commit):
         command = cls('approve')
         command.commit = commit
-        command.actor = approver
+        command.actor = strip_at_prefix(approver)
         return command
 
     @classmethod
