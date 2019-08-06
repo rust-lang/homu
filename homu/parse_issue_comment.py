@@ -1,6 +1,7 @@
 from itertools import chain
 import re
 
+
 class IssueCommentCommand:
     """
     A command that has been parsed out of a GitHub issue comment.
