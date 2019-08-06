@@ -16,7 +16,7 @@ class IssueCommentCommand:
     def approve(cls, approver, commit):
         command = cls('approve')
         command.commit = commit
-        command.actor = approver
+        command.actor = approver.lstrip('@')
         return command
 
     @classmethod
