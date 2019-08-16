@@ -11,7 +11,7 @@ from homu.pull_req_state import (
     BuildState,
     # ProcessEventResult,
 )
-from homu.pull_request_events import (
+from homu.github_v4 import (
     PullRequestEvent
 )
 
@@ -326,6 +326,7 @@ def test_tried(_):
     assert state.get_status() == 'pending'
     assert state.build_state == BuildState.NONE
     assert state.try_state == BuildState.PENDING
+    assert state.last_try.state == BuildState.PENDING
 
     result = state.process_event(create_event({
         'eventType': 'IssueComment',
@@ -344,6 +345,7 @@ def test_tried(_):
     assert state.get_status() == 'success'
     assert state.build_state == BuildState.NONE
     assert state.try_state == BuildState.SUCCESS
+    assert state.last_try.state == BuildState.SUCCESS
 
 
 @unittest.mock.patch('homu.pull_req_state.assert_authorized',
@@ -371,6 +373,7 @@ def test_try_failed(_):
     assert state.get_status() == 'pending'
     assert state.build_state == BuildState.NONE
     assert state.try_state == BuildState.PENDING
+    assert state.last_try.state == BuildState.PENDING
 
     result = state.process_event(create_event({
         'eventType': 'IssueComment',
@@ -389,6 +392,7 @@ def test_try_failed(_):
     assert state.get_status() == 'failure'
     assert state.build_state == BuildState.NONE
     assert state.try_state == BuildState.FAILURE
+    assert state.last_try.state == BuildState.FAILURE
 
 
 @unittest.mock.patch('homu.pull_req_state.assert_authorized',
@@ -416,6 +420,7 @@ def test_try_timed_out(_):
     assert state.get_status() == 'pending'
     assert state.build_state == BuildState.NONE
     assert state.try_state == BuildState.PENDING
+    assert state.last_try.state == BuildState.PENDING
 
     result = state.process_event(create_event({
         'eventType': 'IssueComment',
@@ -434,6 +439,7 @@ def test_try_timed_out(_):
     assert state.get_status() == 'failure'
     assert state.build_state == BuildState.NONE
     assert state.try_state == BuildState.FAILURE
+    assert state.last_try.state == BuildState.TIMEDOUT
 
 
 @unittest.mock.patch('homu.pull_req_state.assert_authorized',
@@ -461,6 +467,7 @@ def test_try_reset_by_push(_):
     assert state.try_ is True
     assert state.get_status() == 'pending'
     assert state.try_state == BuildState.PENDING
+    assert state.last_try.state == BuildState.PENDING
 
     result = state.process_event(create_event({
         'eventType': 'IssueComment',
@@ -478,6 +485,7 @@ def test_try_reset_by_push(_):
     assert state.try_ is True
     assert state.get_status() == 'success'
     assert state.try_state == BuildState.SUCCESS
+    assert state.last_try.state == BuildState.SUCCESS
 
     result = state.process_event(create_event({
         'eventType': 'PullRequestCommit',
@@ -490,6 +498,7 @@ def test_try_reset_by_push(_):
     assert state.try_ is False
     assert state.get_status() == ''
     assert state.try_state == BuildState.NONE
+    assert state.last_try.state == BuildState.SUCCESS
 
 
 @unittest.mock.patch('homu.pull_req_state.assert_authorized',
@@ -519,6 +528,7 @@ def test_build(_):
     assert state.get_status() == 'pending'
     assert state.build_state == BuildState.PENDING
     assert state.try_state == BuildState.NONE
+    assert state.last_build.state == BuildState.PENDING
 
     result = state.process_event(create_event({
         'eventType': 'IssueComment',
@@ -537,6 +547,7 @@ def test_build(_):
     assert state.get_status() == 'completed'
     assert state.build_state == BuildState.SUCCESS
     assert state.try_state == BuildState.NONE
+    assert state.last_build.state == BuildState.SUCCESS
 
 
 @unittest.mock.patch('homu.pull_req_state.assert_authorized',
@@ -564,6 +575,7 @@ def test_build_failed(_):
     assert state.get_status() == 'pending'
     assert state.build_state == BuildState.PENDING
     assert state.try_state == BuildState.NONE
+    assert state.last_build.state == BuildState.PENDING
 
     result = state.process_event(create_event({
         'eventType': 'IssueComment',
@@ -582,6 +594,7 @@ def test_build_failed(_):
     assert state.get_status() == 'failure'
     assert state.build_state == BuildState.FAILURE
     assert state.try_state == BuildState.NONE
+    assert state.last_build.state == BuildState.FAILURE
 
 
 @unittest.mock.patch('homu.pull_req_state.assert_authorized',
@@ -610,6 +623,7 @@ def test_build_retry_cancels(_):
     assert state.get_status() == 'pending'
     assert state.build_state == BuildState.PENDING
     assert state.try_state == BuildState.NONE
+    assert state.last_build.state == BuildState.PENDING
 
     result = state.process_event(create_event({
         'eventType': 'IssueComment',
@@ -627,6 +641,7 @@ def test_build_retry_cancels(_):
     assert state.get_status() == ''
     assert state.build_state == BuildState.NONE
     assert state.try_state == BuildState.NONE
+    assert state.last_build.state == BuildState.CANCELLED
     # TODO: does issuing this retry emit label events?
 
 

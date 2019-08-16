@@ -51,6 +51,10 @@ class BuildState(Enum):
     SUCCESS = 'success'
     FAILURE = 'failure'
     ERROR = 'error'
+    # The build timed out
+    TIMEDOUT = 'timedout'
+    # The build was cancelled by an action, like a retry or something else
+    CANCELLED = 'cancelled'
 
 
 class ApprovalState(Enum):
@@ -65,6 +69,15 @@ class GitHubPullRequestState(Enum):
     CLOSED = 'closed'
     MERGED = 'merged'
     OPEN = 'open'
+
+
+class BuildHistoryItem:
+    def __init__(self, head_sha=None, merge_sha=None, state=None, started_at=None, ended_at=None):
+        self.head_sha = head_sha
+        self.merge_sha = merge_sha
+        self.state = state
+        self.started_at = started_at
+        self.ended_at = ended_at
 
 
 class PullReqState:
@@ -94,6 +107,8 @@ class PullReqState:
         self.author = author
         self.timeout_timer = None
         self.test_started = time.time()
+        self.try_history = []
+        self.build_history = []
 
     @property
     def repo_label(self):
@@ -114,6 +129,20 @@ class PullReqState:
     @property
     def label_events(self):
         return self.repository.cfg.get('labels', {})
+
+    @property
+    def last_build(self):
+        if len(self.build_history) == 0:
+            return None
+
+        return self.build_history[-1]
+
+    @property
+    def last_try(self):
+        if len(self.try_history) == 0:
+            return None
+
+        return self.try_history[-1]
 
     def head_advanced(self, head_sha, *, use_db=True):
         self.head_sha = head_sha
@@ -694,9 +723,15 @@ class PullReqState:
                 if self.try_:
                     event = LabelEvent.TRY
                     self.try_state = BuildState.NONE
+                    if self.last_try is not None:
+                        self.last_try.state = BuildState.CANCELLED
+                        # self.ended_at = 
                 else:
                     event = LabelEvent.APPROVED
                     self.build_state = BuildState.NONE
+                    if self.last_build is not None:
+                        self.last_build.state = BuildState.CANCELLED
+
                 # TODO: re-enable the retry log!
                 #self.record_retry_log(command_src, body, global_cfg)
                 result.label_events.append(event)
@@ -832,7 +867,6 @@ class PullReqState:
         result = ProcessEventResult()
         state = command.homu_state
 
-
         if state['type'] == 'Approved':
             result.changed = self.approved_by != state['approver']
             self.approved_by = state['approver']
@@ -843,11 +877,27 @@ class PullReqState:
             self.status = 'pending'
             self.build_state = BuildState.PENDING
 
+            self.build_history.append(
+                BuildHistoryItem(
+                    head_sha=state['head_sha'],
+                    merge_sha=state['merge_sha'],
+                    started_at=event['publishedAt'],
+                    state=BuildState.PENDING
+                ))
+
         elif state['type'] == 'BuildCompleted':
             result.changed = True
             self.try_ = False
             self.status = 'completed'
             self.build_state = BuildState.SUCCESS
+
+            item = next((item for item in self.build_history
+                         if item.state == BuildState.PENDING
+                         and item.merge_sha == state['merge_sha']), None)
+
+            if item:
+                item.state = BuildState.SUCCESS
+                item.ended_at = event['publishedAt']
 
         elif state['type'] == 'BuildFailed':
             result.changed = True
@@ -855,47 +905,117 @@ class PullReqState:
             self.status = 'failure'
             self.build_state = BuildState.FAILURE
 
+            item = None
+            if 'merge_sha' in state:
+                # Sweet! We can find it by sha and we're good.
+                item = next((item for item in self.build_history
+                             if item.state == BuildState.PENDING
+                             and item.merge_sha == state['merge_sha']), None)
+            else:
+                # merge_sha was not found, so we need to guess. We'll guess the
+                # last one.
+                if self.build_history[-1].state == BuildState.PENDING:
+                    item = self.build_history[-1]
+
+            if item:
+                item.state = BuildState.FAILURE
+                item.ended_at = event['publishedAt']
+
         elif state['type'] == 'TryBuildStarted':
             result.changed = True
             self.try_ = True
             self.status = 'pending'
             self.try_state = BuildState.PENDING
-            # TODO: Multiple tries?
-            # result.changed = True
-            # self.tries.append(PullRequestTry(
-            #     len(self.tries) + 1,
-            #     state['head_sha'],
-            #     state['merge_sha'],
-            #     event['publishedAt'])
-            # )
+            self.try_history.append(
+                BuildHistoryItem(
+                    head_sha=state['head_sha'],
+                    merge_sha=state['merge_sha'],
+                    started_at=event['publishedAt'],
+                    state=BuildState.PENDING
+                ))
 
         elif state['type'] == 'TryBuildCompleted':
             result.changed = True
             self.status = 'success'
             self.try_state = BuildState.SUCCESS
-            # TODO: Multiple tries?
-            # item = next((try_
-            #              for try_ in self.tries
-            #              if try_.state == 'pending'
-            #              and try_.merge_sha == state['merge_sha']),
-            #             None)
-            #
-            # if item:
-            #     result.changed = True
-            #     # TODO: Multiple tries?
-            #     item.ended_at = event['publishedAt']
-            #     item.state = 'completed'
-            #     item.builders = state['builders']
+
+            item = next((item for item in self.try_history
+                         if item.state == BuildState.PENDING
+                         and item.merge_sha == state['merge_sha']), None)
+
+            if item:
+                item.state = BuildState.SUCCESS
+                item.ended_at = event['publishedAt']
 
         elif state['type'] == 'TryBuildFailed':
             result.changed = True
             self.status = 'failure'
             self.try_state = BuildState.FAILURE
 
+            item = None
+            if 'merge_sha' in state:
+                # Sweet! We can find it by sha and we're good.
+                item = next((item for item in self.try_history
+                             if item.state == BuildState.PENDING
+                             and item.merge_sha == state['merge_sha']), None)
+            else:
+                # merge_sha was not found, so we need to guess. We'll guess the
+                # last one.
+                if self.try_history[-1].state == BuildState.PENDING:
+                    item = self.try_history[-1]
+
+            if item:
+                item.state = BuildState.FAILURE
+                item.ended_at = event['publishedAt']
+
         elif state['type'] == 'TimedOut':
-            result.changed = True
-            self.status = 'failure'
-            # TODO: Do we need to determine if a try or a build failed?
-            self.try_state = BuildState.FAILURE
+            # TimedOut doesn't tell us whether a try or a build timed out.
+
+            build_type = None
+
+            last_try = self.last_try
+            last_build = self.last_build
+
+            # We know basically nothing. Use whatever is newer of the most
+            # recent build and try.
+            if last_try is None and last_build is None:
+                # What timed out?
+                pass
+            elif last_try is not None and last_build is None:
+                # We only have tries
+                if last_try.state == BuildState.PENDING:
+                    last_try.state = BuildState.TIMEDOUT
+                    build_type = 'try'
+            elif last_try is None and last_build is not None:
+                # We only have builds
+                if last_build.state == BuildState.PENDING:
+                    last_build.state = BuildState.TIMEDOUT
+                    build_type = 'build'
+            else:
+                if last_try.state == BuildState.PENDING and last_build.state == BuildState.PENDING:
+                    # Both are pending!? Oh my. Whichever is newer, then.
+                    if last_try.started_at < last_build.started_at:
+                        last_build.state = BuildState.TIMEDOUT
+                        build_type = 'build'
+                    else:
+                        last_try.state = BuildState.TIMEDOUT
+                        build_type = 'try'
+                elif last_try.state == BuildState.PENDING:
+                    last_build.state = BuildState.TIMEDOUT
+                    build_type = 'try'
+                elif last_build.state == BuildState.PENDING:
+                    last_try.state = BuildState.TIMEDOUT
+                    build_type = 'build'
+                else:
+                    pass
+
+            if build_type == 'build':
+                result.changed = True
+                self.status = 'failure'
+                self.build_state = BuildState.FAILURE
+            elif build_type == 'try':
+                result.changed = True
+                self.status = 'failure'
+                self.try_state = BuildState.FAILURE
 
         return result
