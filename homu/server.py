@@ -11,7 +11,10 @@ from .main import (
 )
 from . import comments
 from . import utils
-from .utils import lazy_debug
+from .utils import (
+    iso_utc_now,
+    lazy_debug,
+)
 import github3
 import jinja2
 import requests
@@ -659,6 +662,7 @@ def report_build_res(succ, sha, url, builder, state, logger, repo_cfg):
                     base_ref=state.base_ref,
                     builders={k: v["url"] for k, v in state.build_res.items()},
                     merge_sha=state.merge_sha,
+                    ended_at=iso_utc_now(),
                 ))
                 state.change_labels(LabelEvent.SUCCEED)
                 try:
@@ -690,6 +694,7 @@ def report_build_res(succ, sha, url, builder, state, logger, repo_cfg):
                 state.add_comment(comments.TryBuildCompleted(
                     builders={k: v["url"] for k, v in state.build_res.items()},
                     merge_sha=state.merge_sha,
+                    ended_at=iso_utc_now(),
                 ))
                 state.change_labels(LabelEvent.TRY_SUCCEED)
 
@@ -706,6 +711,7 @@ def report_build_res(succ, sha, url, builder, state, logger, repo_cfg):
                     builder_url=url,
                     builder_name=builder,
                     merge_sha=sha,
+                    ended_at=iso_utc_now(),
                 ))
                 state.change_labels(LabelEvent.TRY_FAILED)
             else:
@@ -713,6 +719,7 @@ def report_build_res(succ, sha, url, builder, state, logger, repo_cfg):
                     builder_url=url,
                     builder_name=builder,
                     merge_sha=sha,
+                    ended_at=iso_utc_now(),
                 ))
                 state.change_labels(LabelEvent.FAILED)
 

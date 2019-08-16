@@ -72,7 +72,7 @@ class Delegated(Comment):
 
 
 class BuildStarted(Comment):
-    params = ["head_sha", "merge_sha"]
+    params = ["head_sha", "merge_sha", "started_at"]
 
     def render(self):
         return ":hourglass: Testing commit %s with merge %s..." % (
@@ -81,7 +81,7 @@ class BuildStarted(Comment):
 
 
 class TryBuildStarted(Comment):
-    params = ["head_sha", "merge_sha"]
+    params = ["head_sha", "merge_sha", "started_at"]
 
     def render(self):
         return ":hourglass: Trying commit %s with merge %s..." % (
@@ -90,7 +90,7 @@ class TryBuildStarted(Comment):
 
 
 class BuildCompleted(Comment):
-    params = ["approved_by", "base_ref", "builders", "merge_sha"]
+    params = ["approved_by", "base_ref", "builders", "merge_sha", "ended_at"]
 
     def render(self):
         urls = ", ".join(
@@ -107,7 +107,7 @@ class BuildCompleted(Comment):
 
 
 class TryBuildCompleted(Comment):
-    params = ["builders", "merge_sha"]
+    params = ["builders", "merge_sha", "ended_at"]
 
     def render(self):
         urls = ", ".join(
@@ -119,7 +119,7 @@ class TryBuildCompleted(Comment):
 
 
 class BuildFailed(Comment):
-    params = ["builder_url", "builder_name", "merge_sha"]
+    params = ["builder_url", "builder_name", "merge_sha", "ended_at"]
 
     def render(self):
         return ":broken_heart: Test failed - [%s](%s)" % (
@@ -128,7 +128,7 @@ class BuildFailed(Comment):
 
 
 class TryBuildFailed(Comment):
-    params = ["builder_url", "builder_name", "merge_sha"]
+    params = ["builder_url", "builder_name", "merge_sha", "ended_at"]
 
     def render(self):
         return ":broken_heart: Test failed - [%s](%s)" % (
@@ -137,7 +137,7 @@ class TryBuildFailed(Comment):
 
 
 class TimedOut(Comment):
-    params = ["merge_sha"]
+    params = ["merge_sha", "ended_at"]
 
     def render(self):
         return ":boom: Test timed out"
