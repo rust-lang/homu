@@ -119,7 +119,7 @@ class TryBuildCompleted(Comment):
 
 
 class BuildFailed(Comment):
-    params = ["builder_url", "builder_name"]
+    params = ["builder_url", "builder_name", "merge_sha"]
 
     def render(self):
         return ":broken_heart: Test failed - [%s](%s)" % (
@@ -128,7 +128,7 @@ class BuildFailed(Comment):
 
 
 class TryBuildFailed(Comment):
-    params = ["builder_url", "builder_name"]
+    params = ["builder_url", "builder_name", "merge_sha"]
 
     def render(self):
         return ":broken_heart: Test failed - [%s](%s)" % (
@@ -137,7 +137,7 @@ class TryBuildFailed(Comment):
 
 
 class TimedOut(Comment):
-    params = []
+    params = ["merge_sha"]
 
     def render(self):
         return ":boom: Test timed out"

@@ -381,6 +381,7 @@ class PullReqState:
     def timed_out(self):
         print('* Test timed out: {}'.format(self))
 
+        merge_sha = self.merge_sha
         self.merge_sha = ''
         self.save()
         self.set_status('failure')
@@ -392,7 +393,7 @@ class PullReqState:
             '',
             'Test timed out',
             context='homu')
-        self.add_comment(comments.TimedOut())
+        self.add_comment(comments.TimedOut(merge_sha=merge_sha))
         self.change_labels(LabelEvent.TIMED_OUT)
 
     def record_retry_log(self, src, body):
