@@ -91,8 +91,6 @@ class PullReqState:
     assignee = ''
     delegate = ''
     last_github_cursor = None
-    build_state = BuildState.NONE
-    try_state = BuildState.NONE
     github_pr_state = GitHubPullRequestState.OPEN
 
     def __init__(self, repository, num, head_sha, status, db, mergeable_que, author):
@@ -101,7 +99,6 @@ class PullReqState:
         self.repository = repository
         self.num = num
         self.head_sha = head_sha
-        self.status = status
         self.db = db
         self.mergeable_que = mergeable_que
         self.author = author
@@ -131,7 +128,44 @@ class PullReqState:
         return self.repository.cfg.get('labels', {})
 
     @property
+    def build_state(self):
+        """
+        The current build state. This closely matches the `status` when `try_` is false.
+        """
+        current_build = self.current_build
+
+        if current_build is None:
+            return BuildState.NONE
+
+        if current_build.state == BuildState.TIMEDOUT:
+            return BuildState.FAILURE
+        if current_build.state == BuildState.CANCELLED:
+            return BuildState.NONE
+
+        return current_build.state
+
+    @property
+    def try_state(self):
+        """
+        The current try state. This closely matches the `status` when `try_` is true.
+        """
+        current_try = self.current_try
+
+        if current_try is None:
+            return BuildState.NONE
+
+        if current_try.state == BuildState.TIMEDOUT:
+            return BuildState.FAILURE
+        if current_try.state == BuildState.CANCELLED:
+            return BuildState.NONE
+
+        return current_try.state
+
+    @property
     def last_build(self):
+        """
+        The most recent build run, or None if there have been no attempts to run a build.
+        """
         if len(self.build_history) == 0:
             return None
 
@@ -139,18 +173,103 @@ class PullReqState:
 
     @property
     def last_try(self):
+        """
+        The most recent try run, or None if there have been no attempts to run a try.
+        """
         if len(self.try_history) == 0:
             return None
 
         return self.try_history[-1]
 
+    @property
+    def current_build(self):
+        """
+        The most recent build run that corresponds to the current head sha.
+
+        This will either be the same as last_build, or None if last_build applied to a previous commit hash.
+        """
+        last_build = self.last_build
+        if last_build is None:
+            return None
+
+        if last_build.head_sha == self.head_sha:
+            return last_build
+
+        return None
+
+    @property
+    def current_try(self):
+        """
+        The most recent try run that corresponds to the current head sha.
+
+        This will either be the same as last_try, or None if last_try applied to a previous commit hash.
+        """
+        last_try = self.last_try
+        if last_try is None:
+            return None
+
+        if last_try.head_sha == self.head_sha:
+            return last_try
+
+        return None
+
+    @property
+    def status(self):
+        [status, try_] = self.get_current_status_and_try()
+        return status
+
+    @status.setter
+    def status(self, value):
+        print("setting status on {} to '{}' (except not really)".format(self.num, value))
+
+    @property
+    def try_(self):
+        [status, try_] = self.get_current_status_and_try()
+        return try_
+
+    @try_.setter
+    def try_(self, value):
+        pass
+
+    def get_current_status_and_try(self):
+        current_build = self.current_build
+        current_try = self.current_try
+
+        if current_build is not None:
+            if current_build.state == BuildState.SUCCESS:
+                return ['completed', False]
+            return [self.state_to_status(current_build.state), False]
+
+        if self.approval_state == ApprovalState.APPROVED:
+            return ['approved', False]
+
+        if current_try is not None:
+            return [self.state_to_status(current_try.state), True]
+
+        return ['', False]
+
+    def state_to_status(self, build_status):
+        if build_status == BuildState.NONE:
+            return ''
+        if build_status == BuildState.PENDING:
+            return 'pending'
+        if build_status == BuildState.SUCCESS:
+            return 'success'
+        if build_status == BuildState.FAILURE:
+            return 'failure'
+        if build_status == BuildState.ERROR:
+            return 'error'
+        if build_status == BuildState.TIMEDOUT:
+            return 'failure'
+        if build_status == BuildState.CANCELLED:
+            return ''
+        return ''
+
     def head_advanced(self, head_sha, *, use_db=True):
         self.head_sha = head_sha
         self.approved_by = ''
-        self.status = ''
         self.merge_sha = ''
         self.build_res = {}
-        self.try_ = False
         self.mergeable = None
 
         if use_db:
@@ -428,15 +547,6 @@ class PullReqState:
             # New commits come in: no longer approved
             result.changed = result.changed or self.approved_by != ''
             self.approved_by = ''
-            result.changed = result.changed or self.try_ != False
-            self.try_ = False
-            # TODO: Do we *always* reset the state?
-            result.changed = result.changed or self.status != ''
-            self.status = ''
-            result.changed = result.changed or self.try_state != BuildState.NONE
-            self.try_state = BuildState.NONE
-            result.changed = result.changed or self.build_state != BuildState.NONE
-            self.build_state = BuildState.NONE
 
         elif event.event_type == 'HeadRefForcePushedEvent':
             result.changed = self.head_sha != event['afterCommit']['oid']
@@ -522,26 +632,6 @@ class PullReqState:
             print("Unknown event type: {}".format(event.event_type))
 
         return result
-
-#    def process_issue_comment(self, event, command):
-#        result = ProcessEventResult()
-#        if command.action == 'homu-state':
-#            return self.process_homu_state(event, command)
-#
-#        if command.action == 'approve':
-#            # TODO: Something with states
-#            result.changed = self.approved_by != command.actor
-#            self.approved_by = command.actor
-#
-#        if command.action == 'unapprove':
-#            # TODO: Something with states
-#            result.changed = self.approved_by != ''
-#            self.approved_by = None
-#
-#        # if command.action == 'try':
-#        #    changed = True
-#        #    self.tries.append(PullRequestTry(1, self.head_sha, None))
-#        return result
 
     def process_issue_comment(self, event, command):
         # TODO: Don't hardcode botname
@@ -634,8 +724,6 @@ class PullReqState:
 
                 else:
                     self.approved_by = approver
-                    self.try_ = False
-                    self.status = ''
                     result.changed = True
                     result.label_events.append(LabelEvent.APPROVED)
 
@@ -719,16 +807,13 @@ class PullReqState:
             elif command.action == 'retry':
                 _assert_try_auth_verified()
 
-                self.status = ''
                 if self.try_:
                     event = LabelEvent.TRY
-                    self.try_state = BuildState.NONE
                     if self.last_try is not None:
                         self.last_try.state = BuildState.CANCELLED
                         # self.ended_at = 
                 else:
                     event = LabelEvent.APPROVED
-                    self.build_state = BuildState.NONE
                     if self.last_build is not None:
                         self.last_build.state = BuildState.CANCELLED
 
@@ -873,10 +958,6 @@ class PullReqState:
 
         elif state['type'] == 'BuildStarted':
             result.changed = True
-            self.try_ = False
-            self.status = 'pending'
-            self.build_state = BuildState.PENDING
-
             self.build_history.append(
                 BuildHistoryItem(
                     head_sha=state['head_sha'],
@@ -887,10 +968,6 @@ class PullReqState:
 
         elif state['type'] == 'BuildCompleted':
             result.changed = True
-            self.try_ = False
-            self.status = 'completed'
-            self.build_state = BuildState.SUCCESS
-
             item = next((item for item in self.build_history
                          if item.state == BuildState.PENDING
                          and item.merge_sha == state['merge_sha']), None)
@@ -901,10 +978,6 @@ class PullReqState:
 
         elif state['type'] == 'BuildFailed':
             result.changed = True
-            self.try_ = False
-            self.status = 'failure'
-            self.build_state = BuildState.FAILURE
-
             item = None
             if 'merge_sha' in state:
                 # Sweet! We can find it by sha and we're good.
@@ -923,9 +996,6 @@ class PullReqState:
 
         elif state['type'] == 'TryBuildStarted':
             result.changed = True
-            self.try_ = True
-            self.status = 'pending'
-            self.try_state = BuildState.PENDING
             self.try_history.append(
                 BuildHistoryItem(
                     head_sha=state['head_sha'],
@@ -936,9 +1006,6 @@ class PullReqState:
 
         elif state['type'] == 'TryBuildCompleted':
             result.changed = True
-            self.status = 'success'
-            self.try_state = BuildState.SUCCESS
-
             item = next((item for item in self.try_history
                          if item.state == BuildState.PENDING
                          and item.merge_sha == state['merge_sha']), None)
@@ -949,9 +1016,6 @@ class PullReqState:
 
         elif state['type'] == 'TryBuildFailed':
             result.changed = True
-            self.status = 'failure'
-            self.try_state = BuildState.FAILURE
-
             item = None
             if 'merge_sha' in state:
                 # Sweet! We can find it by sha and we're good.
@@ -1009,13 +1073,6 @@ class PullReqState:
                 else:
                     pass
 
-            if build_type == 'build':
-                result.changed = True
-                self.status = 'failure'
-                self.build_state = BuildState.FAILURE
-            elif build_type == 'try':
-                result.changed = True
-                self.status = 'failure'
-                self.try_state = BuildState.FAILURE
+            result.changed = True
 
         return result

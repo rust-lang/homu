@@ -76,7 +76,7 @@ def test_tried_multiple_times(_):
     Test that a pull request that has been tried multiple times has a history
     """
 
-    state = new_state()
+    state = new_state(head_sha='065151f8b2c31d9e4ddd34aaf8d3263a997f5cfe')
     result = state.process_event(create_event({
         'eventType': 'IssueComment',
         'author': {
@@ -281,7 +281,7 @@ def test_tried_multiple_times_failed_then_succeeded(_):
     Test that a pull request that has been tried shows up as tried
     """
 
-    state = new_state()
+    state = new_state(head_sha='065151f8b2c31d9e4ddd34aaf8d3263a997f5cfe')
     result = state.process_event(create_event({
         'eventType': 'IssueComment',
         'author': {
@@ -383,7 +383,7 @@ def test_built_multiple_times(_):
     Test that a pull request that has been built multiple times has a history
     """
 
-    state = new_state()
+    state = new_state(head_sha='065151f8b2c31d9e4ddd34aaf8d3263a997f5cfe')
     result = state.process_event(create_event({
         'eventType': 'IssueComment',
         'author': {
