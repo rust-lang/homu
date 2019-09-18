@@ -47,22 +47,26 @@
             <li><code>p=NUMBER</code>: Set the priority of the accepted PR (defaults to 0).</li>
             <li><code>rollup</code>: Mark the PR as likely to merge without issue, implies <code>p=-1.</code></li>
             <li><code>rollup-</code>: Unmark the PR as <code>rollup</code>.</li>
+            <li><code>rollup=maybe|always|never</code>: Mark the PR as "always", "maybe", and "never" rollup-able.</li>
             <li><code>retry</code>: Signal that the PR is not bad, and should be retried by buildbot.</li>
             <li><code>try</code>: Request that the PR be tested by buildbot, without accepting it.</li>
             <li><code>force</code>: Stop all the builds on the configured builders, and proceed to the next PR.</li>
             <li><code>clean</code>: Clean up the previous build results.</li>
-            <li><code>delegate=NAME</code>: Allow NAME to issue all homu commands for this PR</li>
-            <li><code>delegate+</code>: Delegate to the PR owner</li>
-            <li><code>delegate-</code>: Remove the delegatee</li>
+            <li><code>delegate=NAME</code>: Allow NAME to issue all homu commands for this PR.</li>
+            <li><code>delegate+</code>: Delegate to the PR owner.</li>
+            <li><code>delegate-</code>: Remove the delegatee.</li>
+            <li><code>treeclose=NUMBER</code>: Any PR <code>NUMBER</code> will now not test. Please consider if <i>you</i> should really be doing this.</li>
+            <li><code>treeclose-</code>: Undo a previous <code>treeclose=NUMBER</code>.</li>
         </ul>
 
         <h4>Examples</h4>
 
         <ul>
-            <li><code>@homu r+ p=1</code></li>
-            <li><code>@homu r+ 123456</code></li>
-            <li><code>@homu r=barosl rollup</code></li>
-            <li><code>@homu retry</code></li>
+            <li><code>@bors r+ p=1</code></li>
+            <li><code>@bors r+ 123456</code></li>
+            <li><code>@bors r=barosl rollup</code></li>
+            <li><code>@bors retry</code></li>
+            <li><code>@bors try @rust-timer queue</code>: Short-hand for compile-perf benchmarking of PRs.</li>
         </ul>
 
         <h3>Customizing the Queue's Contents</h3>
