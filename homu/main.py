@@ -444,6 +444,7 @@ class LabelEvent(Enum):
     TIMED_OUT = 'timed_out'
     INTERRUPTED = 'interrupted'
     PUSHED = 'pushed'
+    ROLLUP_MADE = 'rollup_made'
 
 
 PORTAL_TURRET_DIALOG = ["Target acquired", "Activated", "There you are"]
