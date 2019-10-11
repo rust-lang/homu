@@ -337,7 +337,6 @@ def rollup(user_gh, state, repo_label, repo_cfg, repo):
             user_repo.owner.login + ':' + branch_name,
             body,
         )
-        state.change_labels(LabelEvent.ROLLUP_MADE)
     except github3.models.GitHubError as e:
         return e.response.text
     else:
