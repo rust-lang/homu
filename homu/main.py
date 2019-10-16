@@ -79,6 +79,7 @@ class Repository:
     treeclosed = -1
     treeclosed_src = None
     gh = None
+    gh_test_on_fork = None
     label = None
     db = None
 
@@ -133,7 +134,7 @@ class PullReqState:
     delegate = ''
 
     def __init__(self, num, head_sha, status, db, repo_label, mergeable_que,
-                 gh, owner, name, label_events, repos):
+                 gh, owner, name, label_events, repos, test_on_fork):
         self.head_advanced('', use_db=False)
 
         self.num = num
@@ -149,6 +150,7 @@ class PullReqState:
         self.timeout_timer = None
         self.test_started = time.time()
         self.label_events = label_events
+        self.test_on_fork = test_on_fork
 
     def head_advanced(self, head_sha, *, use_db=True):
         self.head_sha = head_sha
@@ -311,6 +313,22 @@ class PullReqState:
 
             assert repo.owner.login == self.owner
             assert repo.name == self.name
+        return repo
+
+    def get_test_on_fork_repo(self):
+        if not self.test_on_fork:
+            return None
+
+        repo = self.repos[self.repo_label].gh_test_on_fork
+        if not repo:
+            repo = self.gh.repository(
+                self.test_on_fork['owner'],
+                self.test_on_fork['name'],
+            )
+            self.repos[self.repo_label].gh_test_on_fork = repo
+
+            assert repo.owner.login == self.test_on_fork['owner']
+            assert repo.name == self.test_on_fork['name']
         return repo
 
     def save(self):
@@ -792,9 +810,9 @@ def handle_hook_response(state, hook_cfg, body, extra_data):
 def git_push(git_cmd, branch, state):
     merge_sha = subprocess.check_output(git_cmd('rev-parse', 'HEAD')).decode('ascii').strip()  # noqa
 
-    if utils.silent_call(git_cmd('push', '-f', 'origin', branch)):
+    if utils.silent_call(git_cmd('push', '-f', 'test-origin', branch)):
         utils.logged_call(git_cmd('branch', '-f', 'homu-tmp', branch))
-        utils.logged_call(git_cmd('push', '-f', 'origin', 'homu-tmp'))
+        utils.logged_call(git_cmd('push', '-f', 'test-origin', 'homu-tmp'))
 
         def inner():
             utils.github_create_status(
@@ -814,14 +832,14 @@ def git_push(git_cmd, branch, state):
 
         utils.retry_until(inner, fail, state)
 
-        utils.logged_call(git_cmd('push', '-f', 'origin', branch))
+        utils.logged_call(git_cmd('push', '-f', 'test-origin', branch))
 
     return merge_sha
 
 
 def init_local_git_cmds(repo_cfg, git_cfg):
     fpath = 'cache/{}/{}'.format(repo_cfg['owner'], repo_cfg['name'])
-    url = 'git@github.com:{}/{}.git'.format(repo_cfg['owner'], repo_cfg['name'])  # noqa
+    genurl = lambda cfg: 'git@github.com:{}/{}.git'.format(cfg['owner'], cfg['name'])  # noqa
 
     if not os.path.exists(SSH_KEY_FILE):
         os.makedirs(os.path.dirname(SSH_KEY_FILE), exist_ok=True)
@@ -831,7 +849,18 @@ def init_local_git_cmds(repo_cfg, git_cfg):
 
     if not os.path.exists(fpath):
         utils.logged_call(['git', 'init', fpath])
-        utils.logged_call(['git', '-C', fpath, 'remote', 'add', 'origin', url])  # noqa
+
+    remotes = {
+        'origin': genurl(repo_cfg),
+        'test-origin': genurl(repo_cfg.get('test-on-fork', repo_cfg)),
+    }
+
+    for remote, url in remotes.items():
+        try:
+            utils.logged_call(['git', '-C', fpath, 'remote', 'set-url', remote, url])  # noqa
+            utils.logged_call(['git', '-C', fpath, 'remote', 'set-url', '--push', remote, url])  # noqa
+        except subprocess.CalledProcessError:
+            utils.logged_call(['git', '-C', fpath, 'remote', 'add', remote, url])  # noqa
 
     return lambda *args: ['git', '-C', fpath] + list(args)
 
@@ -1511,7 +1540,7 @@ def synchronize(repo_label, repo_cfg, logger, gh, states, repos, db, mergeable_q
                     status = info.state
                     break
 
-        state = PullReqState(pull.number, pull.head.sha, status, db, repo_label, mergeable_que, gh, repo_cfg['owner'], repo_cfg['name'], repo_cfg.get('labels', {}), repos)  # noqa
+        state = PullReqState(pull.number, pull.head.sha, status, db, repo_label, mergeable_que, gh, repo_cfg['owner'], repo_cfg['name'], repo_cfg.get('labels', {}), repos, repo_cfg.get('test-on-fork'))  # noqa
         state.title = pull.title
         state.body = pull.body
         state.head_ref = pull.head.repo[0] + ':' + pull.head.ref
@@ -1702,6 +1731,13 @@ def main():
         repo_cfgs[repo_label] = repo_cfg
         repo_labels[repo_cfg['owner'], repo_cfg['name']] = repo_label
 
+        # If test-on-fork is enabled point both the main repo and the fork to
+        # the same homu "repository". This will allow events coming from both
+        # GitHub repositories to be processed the same way.
+        if 'test-on-fork' in repo_cfg:
+            tof = repo_cfg['test-on-fork']
+            repo_labels[tof['owner'], tof['name']] = repo_label
+
         repo_states = {}
         repos[repo_label] = Repository(None, repo_label, db)
 
@@ -1710,7 +1746,7 @@ def main():
             'SELECT num, head_sha, status, title, body, head_ref, base_ref, assignee, approved_by, priority, try_, rollup, delegate, merge_sha FROM pull WHERE repo = ?',   # noqa
             [repo_label])
         for num, head_sha, status, title, body, head_ref, base_ref, assignee, approved_by, priority, try_, rollup, delegate, merge_sha in db.fetchall():  # noqa
-            state = PullReqState(num, head_sha, status, db, repo_label, mergeable_que, gh, repo_cfg['owner'], repo_cfg['name'], repo_cfg.get('labels', {}), repos)  # noqa
+            state = PullReqState(num, head_sha, status, db, repo_label, mergeable_que, gh, repo_cfg['owner'], repo_cfg['name'], repo_cfg.get('labels', {}), repos, repo_cfg.get('test-on-fork'))  # noqa
             state.title = title
             state.body = body
             state.head_ref = head_ref

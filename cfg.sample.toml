@@ -101,6 +101,21 @@ try_users = []
 #auto = "auto"
 #try = "try"
 
+# test-on-fork allows you to run the CI builds for a project in a separate fork
+# instead of the main repository, while still approving PRs and merging the
+# commits in the main one.
+#
+# To enable test-on-fork you need to uncomment the section below and fill the
+# fork's owner and repository name. The fork MUST BE AN ACTUAL GITHUB FORK for
+# this feature to work. That means it will likely need to be in a separate
+# GitHub organization.
+#
+# This only works when `local_git = true`.
+#
+#[repo.NAME.test-on-fork]
+#owner = ""
+#name = ""
+
 [repo.NAME.github]
 # Arbitrary secret. You can generate one with: openssl rand -hex 20
 secret = ""

@@ -420,7 +420,8 @@ def github():
                                  info['repository']['owner']['login'],
                                  info['repository']['name'],
                                  repo_cfg.get('labels', {}),
-                                 g.repos)
+                                 g.repos,
+                                 repo_cfg.get('test-on-fork'))
             state.title = info['pull_request']['title']
             state.body = info['pull_request']['body']
             state.head_ref = info['pull_request']['head']['repo']['owner']['login'] + ':' + info['pull_request']['head']['ref']  # noqa
@@ -656,10 +657,17 @@ def report_build_res(succ, url, builder, state, logger, repo_cfg):
                     merge_sha=state.merge_sha,
                 ))
                 state.change_labels(LabelEvent.SUCCEED)
+
+                def set_ref():
+                    utils.github_set_ref(state.get_repo(), 'heads/' +
+                                         state.base_ref, state.merge_sha)
+                    if state.test_on_fork is not None:
+                        utils.github_set_ref(state.get_test_on_fork_repo(),
+                                             'heads/' + state.base_ref,
+                                             state.merge_sha, force=True)
                 try:
                     try:
-                        utils.github_set_ref(state.get_repo(), 'heads/' +
-                                             state.base_ref, state.merge_sha)
+                        set_ref()
                     except github3.models.GitHubError:
                         utils.github_create_status(
                             state.get_repo(),
@@ -667,8 +675,7 @@ def report_build_res(succ, url, builder, state, logger, repo_cfg):
                             'success', '',
                             'Branch protection bypassed',
                             context='homu')
-                        utils.github_set_ref(state.get_repo(), 'heads/' +
-                                             state.base_ref, state.merge_sha)
+                        set_ref()
 
                     state.fake_merge(repo_cfg)
 
