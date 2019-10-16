@@ -661,9 +661,10 @@ def report_build_res(succ, url, builder, state, logger, repo_cfg):
                 def set_ref():
                     utils.github_set_ref(state.get_repo(), 'heads/' +
                                          state.base_ref, state.merge_sha)
-                    utils.github_set_ref(state.get_test_on_fork_repo(),
-                                         'heads/' + state.base_ref,
-                                         state.merge_sha, force=True)
+                    if state.test_on_fork is not None:
+                        utils.github_set_ref(state.get_test_on_fork_repo(),
+                                             'heads/' + state.base_ref,
+                                             state.merge_sha, force=True)
                 try:
                     try:
                         set_ref()

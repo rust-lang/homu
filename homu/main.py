@@ -850,9 +850,10 @@ def init_local_git_cmds(repo_cfg, git_cfg):
     if not os.path.exists(fpath):
         utils.logged_call(['git', 'init', fpath])
 
-    remotes = {'origin': genurl(repo_cfg), 'test-origin': genurl(repo_cfg)}
-    if 'test-on-fork' in repo_cfg:
-        remotes['test-origin'] = genurl(repo_cfg['test-on-fork'])
+    remotes = {
+        'origin': genurl(repo_cfg),
+        'test-origin': genurl(repo_cfg.get('test-on-fork', repo_cfg)),
+    }
 
     for remote, url in remotes.items():
         try:
