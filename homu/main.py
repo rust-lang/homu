@@ -1326,15 +1326,20 @@ def start_build(state, repo_cfgs, buildbot_slots, logger, db, git_cfg):
         desc,
         context='homu')
 
+    merge_sha = state.merge_sha
+    if state.test_on_fork is not None:
+        repo = state.get_test_on_fork_repo()
+        merge_sha = repo.owner.login + '/' + repo.name + '@' + merge_sha
+
     if state.try_:
         state.add_comment(comments.TryBuildStarted(
             head_sha=state.head_sha,
-            merge_sha=state.merge_sha,
+            merge_sha=merge_sha,
         ))
     else:
         state.add_comment(comments.BuildStarted(
             head_sha=state.head_sha,
-            merge_sha=state.merge_sha,
+            merge_sha=merge_sha,
         ))
 
     return True
