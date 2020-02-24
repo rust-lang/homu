@@ -38,6 +38,7 @@
             comments on the PR they refer to. Comments may include multiple commands. Homu will
             only listen to official reviewers that it is configured to listen to. A comment
             must mention the GitHub account Homu is configured to use. (e.g. for the Rust project this is @bors)
+            Note that Homu will only recognize comments in <i>open</i> PRs.
         </p>
 
         <ul>
@@ -55,8 +56,8 @@
             <li><code>delegate=NAME</code>: Allow NAME to issue all homu commands for this PR.</li>
             <li><code>delegate+</code>: Delegate to the PR owner.</li>
             <li><code>delegate-</code>: Remove the delegatee.</li>
-            <li><code>treeclose=NUMBER</code>: Any PR <code>NUMBER</code> will now not test. Please consider if <i>you</i> should really be doing this.</li>
-            <li><code>treeclose-</code>: Undo a previous <code>treeclose=NUMBER</code>.</li>
+            <li><code>treeclosed=NUMBER</code>: Any PR below priority <code>NUMBER</code> will not test. Please consider if <i>you</i> really want to do this.</li>
+            <li><code>treeclosed-</code>: Undo a previous <code>treeclosed=NUMBER</code>.</li>
         </ul>
 
         <h4>Examples</h4>
