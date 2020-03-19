@@ -27,12 +27,12 @@ import random
 import weakref
 
 STATUS_TO_PRIORITY = {
-    'success': 0,
     'pending': 1,
     'approved': 2,
     '': 3,
     'error': 4,
     'failure': 5,
+    'success': 6,
 }
 
 INTERRUPTED_BY_HOMU_FMT = 'Interrupted by Homu ({})'
