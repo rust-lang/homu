@@ -196,6 +196,14 @@
         <script src="../assets/jquery.dataTables.min.js"></script>
 
         <script>
+            const OAUTH_SCOPES = [
+                "public_repo",
+                "admin:repo_hook",
+
+                // Needed to be able to include GitHub Actions workflow files in rollup PRs.
+                "workflow",
+            ];
+
             document.getElementById('expand-rollup').onclick = function() {
                 var checkboxCount = document.querySelectorAll('#queue tbody input[type=checkbox]:checked').length;
                 document.getElementById('checkbox-count').innerHTML = checkboxCount;
@@ -216,7 +224,7 @@
 
                 location = 'https://github.com/login/oauth/authorize' +
                     '?client_id={{oauth_client_id}}' +
-                    '&scope=public_repo,admin:repo_hook' +
+                    '&scope=' + OAUTH_SCOPES.join(',') +
                     '&state=' + encodeURIComponent(JSON.stringify({
                         cmd: 'rollup',
                         repo_label: '{{repo_label}}',
@@ -229,7 +237,7 @@
 
                 location = 'https://github.com/login/oauth/authorize' +
                     '?client_id={{oauth_client_id}}' +
-                    '&scope=public_repo,admin:repo_hook' +
+                    '&scope=' + OAUTH_SCOPES.join(',') +
                     '&state=' + encodeURIComponent(JSON.stringify({
                         cmd: 'synch',
                         repo_label: '{{repo_label}}',
