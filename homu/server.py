@@ -622,6 +622,10 @@ def github():
             return 'OK'
         if info['check_run']['conclusion'] is None:
             return 'OK'
+        # GHA marks jobs as skipped, if they are not run due to the job
+        # condition. This prevents bors from failing because of these jobs.
+        if info['check_run']['conclusion'] == 'skipped':
+            return 'OK'
 
         report_build_res(
             info['check_run']['conclusion'] == 'success',
