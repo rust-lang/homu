@@ -719,7 +719,8 @@ def parse_commands(body, username, user_id, repo_label, repo_cfg, state,
                         data={
                             'selected': repo_cfg['buildbot']['builders'],
                             'comments': INTERRUPTED_BY_HOMU_FMT.format(int(time.time())),  # noqa
-                    })
+                        }
+                    )
 
             if 'authzfail' in res.text:
                 err = 'Authorization failed'
