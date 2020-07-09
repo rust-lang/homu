@@ -97,7 +97,8 @@ WORDS_TO_ROLLUP = {
     'rollup-': 0,
     'rollup': 1,
     'rollup=maybe': 0,
-    'rollup=never': -1,
+    'rollup=never': -2,
+    'rollup=iffy': -1,
     'rollup=always': 1,
 }
 
