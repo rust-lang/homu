@@ -183,10 +183,8 @@ class PullReqState:
             STATUS_TO_PRIORITY.get(self.get_status(), -1),
             1 if self.mergeable is False else 0,
             0 if self.approved_by else 1,
-            # Sort rollup=always to the bottom of the queue, but treat all
-            # other rollup statuses as equivalent
-            1 if WORDS_TO_ROLLUP['rollup=always'] == self.rollup else 0,
             -self.priority,
+            self.rollup,
             self.num,
         ]
 
