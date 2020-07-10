@@ -299,6 +299,21 @@ def test_rollup_minus():
     assert command.rollup_value == 0
 
 
+def test_rollup_iffy():
+    """
+    @bors rollup=iffy
+    """
+
+    author = "manishearth"
+    body = "@bors rollup=iffy"
+    commands = parse_issue_comment(author, body, commit, "bors")
+
+    assert len(commands) == 1
+    command = commands[0]
+    assert command.action == 'rollup'
+    assert command.rollup_value == -1
+
+
 def test_rollup_never():
     """
     @bors rollup=never
@@ -311,7 +326,7 @@ def test_rollup_never():
     assert len(commands) == 1
     command = commands[0]
     assert command.action == 'rollup'
-    assert command.rollup_value == -1
+    assert command.rollup_value == -2
 
 
 def test_rollup_maybe():
