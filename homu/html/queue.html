@@ -174,7 +174,7 @@
                 {% for state in states %}
                 <tr class="{{state.greyed}}">
                     <td class="hide">{{loop.index}}</td>
-                    <td><input type="checkbox" data-num="{{state.num}}" {{ '' if ((state.status == 'approved' or (state.status == 'pending' and !state.try_)) and state.rollup != 'never') else 'disabled' }}></td>
+                    <td><input type="checkbox" data-num="{{state.num}}" {{ '' if ((state.status == 'approved' or (state.status == 'pending' and not state.try_)) and state.rollup != 'never') else 'disabled' }}></td>
                     {% if multiple %}
                     <td><a href="{{state.repo_url}}">{{state.repo_label}}</a></td>
                     {% endif %}
