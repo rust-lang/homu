@@ -41,15 +41,6 @@ DEFAULT_TEST_TIMEOUT = 3600 * 10
 
 global_cfg = {}
 
-WORDS_TO_ROLLUP = {
-    'rollup-': 0,
-    'rollup': 1,
-    'rollup=maybe': 0,
-    'rollup=never': -2,
-    'rollup=iffy': -1,
-    'rollup=always': 1,
-}
-
 
 @contextmanager
 def buildbot_sess(repo_cfg):

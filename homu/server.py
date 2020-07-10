@@ -43,6 +43,7 @@ class G:
 
 g = G()
 
+
 ROLLUP_STR = {
     -2: 'never',
     -1: 'iffy',
