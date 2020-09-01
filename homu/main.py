@@ -42,6 +42,12 @@ DEFAULT_TEST_TIMEOUT = 3600 * 10
 global_cfg = {}
 
 
+# Replace @mention with `@mention` to suppress pings in merge commits.
+# Note: Don't replace non-mentions like "email@gmail.com".
+def suppress_pings(text):
+    return re.sub(r'\B(@\S+)', r'`\g<1>`', text)  # noqa
+
+
 @contextmanager
 def buildbot_sess(repo_cfg):
     sess = requests.Session()
@@ -347,7 +353,7 @@ class PullReqState:
         issue = self.get_repo().issue(self.num)
 
         self.title = issue.title
-        self.body = issue.body
+        self.body = suppress_pings(issue.body)
 
     def fake_merge(self, repo_cfg):
         if not repo_cfg.get('linear', False):
@@ -1533,7 +1539,7 @@ def synchronize(repo_label, repo_cfg, logger, gh, states, repos, db, mergeable_q
 
         state = PullReqState(pull.number, pull.head.sha, status, db, repo_label, mergeable_que, gh, repo_cfg['owner'], repo_cfg['name'], repo_cfg.get('labels', {}), repos, repo_cfg.get('test-on-fork'))  # noqa
         state.title = pull.title
-        state.body = pull.body
+        state.body = suppress_pings(pull.body)
         state.head_ref = pull.head.repo[0] + ':' + pull.head.ref
         state.base_ref = pull.base.ref
         state.set_mergeable(None)
