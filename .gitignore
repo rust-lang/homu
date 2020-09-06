@@ -3,6 +3,7 @@
 /cfg.toml
 /cfg.json
 /homu.egg-info/
+/.eggs/
 /main.db
 /cache
 *.pyc
