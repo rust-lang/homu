@@ -1488,7 +1488,7 @@ def fetch_mergeability(mergeable_que):
                 _blame = ''
                 if issue_or_commit:
                     _blame = ' (presumably {})'.format(issue_or_commit)
-                state.add_comment(':umbrella: The latest upstream changes{} made this pull request unmergeable. Please resolve the merge conflicts.'.format(  # noqa
+                state.add_comment(':umbrella: The latest upstream changes{} made this pull request unmergeable. Please resolve the merge conflicts.\n\n*Note that reviewers usually do not review pull requests until merge conflicts are resolved!*'.format(  # noqa
                     _blame
                 ))
                 state.change_labels(LabelEvent.CONFLICT)
