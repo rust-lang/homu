@@ -1488,9 +1488,20 @@ def fetch_mergeability(mergeable_que):
                 _blame = ''
                 if issue_or_commit:
                     _blame = ' (presumably {})'.format(issue_or_commit)
-                state.add_comment(':umbrella: The latest upstream changes{} made this pull request unmergeable. Please resolve the merge conflicts.\n\n*Note that reviewers usually do not review pull requests until merge conflicts are resolved!*'.format(  # noqa
-                    _blame
-                ))
+                state.add_comment(
+                    ':umbrella: The latest upstream changes{} made this '
+                    'pull request unmergeable. Please resolve the merge '
+                    'conflicts.\n\n'
+                    '*Note that reviewers usually do not review pull requests '
+                    'until merge conflicts are resolved!* Once you resolve '
+                    'the conflicts, you should change the labels applied by '
+                    'bors to indicate that your PR is ready for review. '
+                    'Post this as a comment to change the labels:\n'
+                    '```\n'
+                    '@rustbot modify labels: +S-waiting-on-review -S-waiting-on-author\n'  # noqa
+                    '```'
+                    .format(_blame)
+                )
                 state.change_labels(LabelEvent.CONFLICT)
 
             state.set_mergeable(mergeable, que=False)
