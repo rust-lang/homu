@@ -1490,8 +1490,8 @@ def fetch_mergeability(mergeable_que):
                     _blame = ' (presumably {})'.format(issue_or_commit)
                 state.add_comment(
                     ':umbrella: The latest upstream changes{} made this '
-                    'pull request unmergeable. Please resolve the merge '
-                    'conflicts.\n\n'
+                    'pull request unmergeable. Please [resolve the merge conflicts]'  # noqa
+                    '(https://rustc-dev-guide.rust-lang.org/git.html#conflicts).\n\n'  # noqa
                     '*Note that reviewers usually do not review pull requests '
                     'until merge conflicts are resolved!* Once you resolve '
                     'the conflicts, you should change the labels applied by '
