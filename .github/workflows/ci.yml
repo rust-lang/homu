@@ -1,0 +1,36 @@
+---
+
+name: CI/CD
+on:
+  push:
+    branches:
+      - master
+  pull_request: {}
+
+env:
+  PYTHON_VERSION: 3.8
+
+jobs:
+  cicd:
+    name: Test and deploy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone the source code
+        uses: actions/checkout@v2
+
+      - name: Setup Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v2
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install flake8
+        run: pip install flake8
+
+      - name: Ensure the code passes lints
+        run: flake8 homu/
+
+      - name: Install homu on the builder
+        run: pip install -e .
+
+      - name: Run the test suite
+        run: python3 setup.py test
