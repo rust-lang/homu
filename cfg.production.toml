@@ -1,0 +1,25 @@
+max_priority = 9001
+
+[db]
+file = '/efs/main.db'
+
+[github]
+access_token = "${GITHUB_TOKEN}"
+app_client_id = "${GITHUB_CLIENT_ID}"
+app_client_secret = "${GITHUB_CLIENT_SECRET}"
+
+[git]
+local_git = true
+ssh_key = """
+${HOMU_SSH_KEY}
+"""
+
+[web]
+host = '0.0.0.0'
+port = 80
+announcement = "This is a test instance of bors. It will be removed in the near future."
+
+[repo.crater.github]
+secret = "{{ homu.repo-secrets.crater }}"
+[repo.crater.checks.actions]
+name = "bors build finished"
