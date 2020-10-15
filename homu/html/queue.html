@@ -109,9 +109,24 @@
             .hide { display: none; }
             th { cursor: pointer; }
             #actual-rollup { background: #c7e2ff; border: #00acf7 3px double; border-radius: 5px; width: 75%; padding: 0 1em; }
+
+            #announcement {
+                margin: -8px -8px 1em -8px;
+                padding: 0.5em 1em;
+                text-align: center;
+                background: #eee;
+                border-bottom: 1px solid #ccc;
+            }
+            #announcement a:visited {
+                color: #00f;
+            }
         </style>
     </head>
     <body>
+        {% if announcement != None %}
+        <div id="announcement">{{ announcement | safe }}</div>
+        {% endif %}
+
         <h1>Homu queue - {% if repo_url %}<a href="{{repo_url}}" target="_blank">{{repo_label}}</a>{% else %}{{repo_label}}{% endif %} {% if treeclosed %} [<a href="{{treeclosed_src}}">TREE CLOSED</a> below priority {{treeclosed}}] {% endif %}</h2>
 
         <p>
