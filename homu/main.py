@@ -39,6 +39,8 @@ INTERRUPTED_BY_HOMU_FMT = 'Interrupted by Homu ({})'
 INTERRUPTED_BY_HOMU_RE = re.compile(r'Interrupted by Homu \((.+?)\)')
 DEFAULT_TEST_TIMEOUT = 3600 * 10
 
+VARIABLES_RE = re.compile(r'\${([a-zA-Z_]+)}')
+
 global_cfg = {}
 
 
@@ -1602,6 +1604,29 @@ def synchronize(repo_label, repo_cfg, logger, gh, states, repos, db, mergeable_q
     logger.info('Done synchronizing {}!'.format(repo_label))
 
 
+def process_config(config):
+    # Replace environment variables
+    if type(config) == str:
+        for var in VARIABLES_RE.findall(config):
+            try:
+                config = config.replace("${"+var+"}", os.environ[var])
+            except KeyError:
+                raise RuntimeError(
+                    f"missing environment variable ${var} "
+                    f"(requested in the configuration file)"
+                ) from None
+
+        return config
+    # Recursively apply the processing
+    elif type(config) == list:
+        return [process_config(item) for item in config]
+    elif type(config) == dict:
+        return {key: process_config(value) for key, value in config.items()}
+    # All other values should be returned as-is
+    else:
+        return config
+
+
 def arguments():
     parser = argparse.ArgumentParser(
         description='A bot that integrates with GitHub and your favorite '
@@ -1642,6 +1667,7 @@ def main():
                 cfg = json.loads(fp.read())
         else:
             raise
+    cfg = process_config(cfg)
     global_cfg = cfg
 
     gh = github3.login(token=cfg['github']['access_token'])

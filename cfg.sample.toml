@@ -1,3 +1,7 @@
+# The configuration file supports variable interpolation. In any string field,
+# ${VARIABLE_NAME} will be replaced with the value of the VARIABLE_NAME
+# environment variable.
+
 # Priority values above max_priority will be refused.
 max_priority = 9001
 

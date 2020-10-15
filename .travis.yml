@@ -1,8 +1,7 @@
 sudo: false
 language: python
 python:
-  - 3.4
-  - 3.5
+  - 3.8
 install:
   - pip install flake8
 script:
