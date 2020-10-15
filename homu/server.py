@@ -950,6 +950,30 @@ def admin():
     return 'Unrecognized command'
 
 
+def redirect_to_canonical_host():
+    request_url = urllib.parse.urlparse(request.url)
+    redirect_url = request_url
+
+    # Handle hostname changes
+    if "canonical_url" in g.cfg["web"]:
+        canonical_url = urllib.parse.urlparse(g.cfg["web"]["canonical_url"])
+        redirect_url = redirect_url._replace(
+            scheme=canonical_url.scheme,
+            netloc=canonical_url.netloc,
+        )
+
+    # Handle path changes
+    for prefix in g.cfg["web"].get("remove_path_prefixes", []):
+        if redirect_url.path.startswith("/" + prefix + "/"):
+            new_path = redirect_url.path[len(prefix)+1:]
+            redirect_url = redirect_url._replace(path=new_path)
+        elif redirect_url.path == "/" + prefix:
+            redirect_url = redirect_url._replace(path="/")
+
+    if request_url != redirect_url:
+        redirect(urllib.parse.urlunparse(redirect_url))
+
+
 def start(cfg, states, queue_handler, repo_cfgs, repos, logger,
           buildbot_slots, my_username, db, repo_labels, mergeable_que, gh):
     env = jinja2.Environment(
@@ -975,6 +999,8 @@ def start(cfg, states, queue_handler, repo_cfgs, repos, logger,
     g.repo_labels = repo_labels
     g.mergeable_que = mergeable_que
     g.gh = gh
+
+    bottle.app().add_hook("before_request", redirect_to_canonical_host)
 
     # Synchronize all PR data on startup
     if cfg['web'].get('sync_on_start', False):

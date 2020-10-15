@@ -43,6 +43,15 @@ port = 54856
 # all open PRs.
 sync_on_start = true
 
+# The canonical URL of this homu instance. If a user reaches the instance
+# through a different path they will be redirected. If this is not present in
+# the configuration homu will still work, but no redirect will be performed.
+#canonical_url = "https://bors.example.com"
+
+# List of path prefixes to remove from the URL. This is useful if the homu
+# instance was moved from a subdirectory of a domain to the top level.
+#remove_path_prefixes = ["homu"]
+
 # Custom hooks can be added as well.
 # Homu will ping the given endpoint with POSTdata of the form:
 # {'body': 'comment body', 'extra_data': 'extra data', 'pull': pull req number}
