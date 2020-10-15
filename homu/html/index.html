@@ -12,75 +12,94 @@
             h4 { font-size: 14px; }
             p, ul { font-size: 15px; line-height: 150%; }
             code { background-color: #efefef; }
-            body { max-width: 60em; margin-left: auto; margin-right: auto; }
+            div.wrapper { max-width: 60em; margin-left: auto; margin-right: auto; }
             .repos { font-size: 18px; line-height: 180%; }
+
+            #announcement {
+                margin: -8px -8px 1em -8px;
+                padding: 0.5em 1em;
+                text-align: center;
+                background: #eee;
+                border-bottom: 1px solid #ccc;
+            }
+            #announcement a:visited {
+                color: #00f;
+            }
         </style>
     </head>
     <body>
-        <h1>Homu</h1>
+        {% if announcement != None %}
+        <div id="announcement">{{ announcement | safe }}</div>
+        {% endif %}
 
-        <h2>Repositories</h2>
+        <div class="wrapper">
 
-        <ul class="repos">
-            {% for repo in repos %}
-            <li><a href="queue/{{repo.repo_label}}">{{repo.repo_label}}</a> {% if repo.treeclosed >= 0 %} [TREE CLOSED] {% endif %}</li>
-            {% endfor %}
-        </ul>
+            <h1>Homu</h1>
 
-        <hr>
+            <h2>Repositories</h2>
 
-        <h2>Homu Cheatsheet</h2>
+            <ul class="repos">
+                {% for repo in repos %}
+                <li><a href="queue/{{repo.repo_label}}">{{repo.repo_label}}</a> {% if repo.treeclosed >= 0 %} [TREE CLOSED] {% endif %}</li>
+                {% endfor %}
+            </ul>
 
-        <h3>Commands</h3>
+            <hr>
 
-        <p>
-            Here's a quick reference for the commands Homu accepts. Commands must be posted as
-            comments on the PR they refer to. Comments may include multiple commands. Homu will
-            only listen to official reviewers that it is configured to listen to. A comment
-            must mention the GitHub account Homu is configured to use. (e.g. for the Rust project this is @bors)
-            Note that Homu will only recognize comments in <i>open</i> PRs.
-        </p>
+            <h2>Homu Cheatsheet</h2>
 
-        <ul>
-            <li><code>r+ (SHA)</code>: Accept a PR. Optionally, the SHA of the last commit in the PR can be provided as a guard against synchronization issues or malicious users. Regardless of the form used, PRs will automatically be unaccepted if the contents are changed.</li>
-            <li><code>r=NAME (SHA)</code>: Accept a PR on the behalf of NAME.</li>
-            <li><code>r-</code>: Unacccept a PR.</li>
-            <li><code>p=NUMBER</code>: Set the priority of the accepted PR (defaults to 0).</li>
-            <li><code>rollup</code>: Mark the PR as likely to merge without issue, short for <code>rollup=always</code></li>
-            <li><code>rollup-</code>: Unmark the PR as <code>rollup</code>.</li>
-            <li><code>rollup=maybe|always|iffy|never</code>: Mark the PR as "always", "maybe", "iffy", and "never" rollup-able.</li>
-            <li><code>retry</code>: Signal that the PR is not bad, and should be retried by buildbot.</li>
-            <li><code>try</code>: Request that the PR be tested by buildbot, without accepting it.</li>
-            <li><code>force</code>: Stop all the builds on the configured builders, and proceed to the next PR.</li>
-            <li><code>clean</code>: Clean up the previous build results.</li>
-            <li><code>delegate=NAME</code>: Allow NAME to issue all homu commands for this PR.</li>
-            <li><code>delegate+</code>: Delegate to the PR owner.</li>
-            <li><code>delegate-</code>: Remove the delegatee.</li>
-            <li><code>treeclosed=NUMBER</code>: Any PR below priority <code>NUMBER</code> will not test. Please consider if you <i>really</i> want to do this.</li>
-            <li><code>treeclosed-</code>: Undo a previous <code>treeclosed=NUMBER</code>.</li>
-        </ul>
+            <h3>Commands</h3>
 
-        <h4>Examples</h4>
+            <p>
+                Here's a quick reference for the commands Homu accepts. Commands must be posted as
+                comments on the PR they refer to. Comments may include multiple commands. Homu will
+                only listen to official reviewers that it is configured to listen to. A comment
+                must mention the GitHub account Homu is configured to use. (e.g. for the Rust project this is @bors)
+                Note that Homu will only recognize comments in <i>open</i> PRs.
+            </p>
 
-        <ul>
-            <li><code>@bors r+ p=1</code></li>
-            <li><code>@bors r+ 123456</code></li>
-            <li><code>@bors r=barosl rollup</code></li>
-            <li><code>@bors retry</code></li>
-            <li><code>@bors try @rust-timer queue</code>: Short-hand for compile-perf benchmarking of PRs.</li>
-        </ul>
+            <ul>
+                <li><code>r+ (SHA)</code>: Accept a PR. Optionally, the SHA of the last commit in the PR can be provided as a guard against synchronization issues or malicious users. Regardless of the form used, PRs will automatically be unaccepted if the contents are changed.</li>
+                <li><code>r=NAME (SHA)</code>: Accept a PR on the behalf of NAME.</li>
+                <li><code>r-</code>: Unacccept a PR.</li>
+                <li><code>p=NUMBER</code>: Set the priority of the accepted PR (defaults to 0).</li>
+                <li><code>rollup</code>: Mark the PR as likely to merge without issue, short for <code>rollup=always</code></li>
+                <li><code>rollup-</code>: Unmark the PR as <code>rollup</code>.</li>
+                <li><code>rollup=maybe|always|iffy|never</code>: Mark the PR as "always", "maybe", "iffy", and "never" rollup-able.</li>
+                <li><code>retry</code>: Signal that the PR is not bad, and should be retried by buildbot.</li>
+                <li><code>try</code>: Request that the PR be tested by buildbot, without accepting it.</li>
+                <li><code>force</code>: Stop all the builds on the configured builders, and proceed to the next PR.</li>
+                <li><code>clean</code>: Clean up the previous build results.</li>
+                <li><code>delegate=NAME</code>: Allow NAME to issue all homu commands for this PR.</li>
+                <li><code>delegate+</code>: Delegate to the PR owner.</li>
+                <li><code>delegate-</code>: Remove the delegatee.</li>
+                <li><code>treeclosed=NUMBER</code>: Any PR below priority <code>NUMBER</code> will not test. Please consider if you <i>really</i> want to do this.</li>
+                <li><code>treeclosed-</code>: Undo a previous <code>treeclosed=NUMBER</code>.</li>
+            </ul>
 
-        <h3>Customizing the Queue's Contents</h3>
+            <h4>Examples</h4>
 
-        <p>
-            Homu provides a few simple ways to customize the queue's contents to fit your needs:
-        </p>
+            <ul>
+                <li><code>@bors r+ p=1</code></li>
+                <li><code>@bors r+ 123456</code></li>
+                <li><code>@bors r=barosl rollup</code></li>
+                <li><code>@bors retry</code></li>
+                <li><code>@bors try @rust-timer queue</code>: Short-hand for compile-perf benchmarking of PRs.</li>
+            </ul>
 
-        <ul>
-            <li><code>queue/rust+cargo</code> will combine the queues of the <code>rust</code> and <code>cargo</code> repos (for example).</li>
-            <li><a href="queue/all">queue/all</a> will combine the queues of all registered repos.</li>
-            <li>Rows can be sorted by column by clicking on column headings.</li>
-            <li>Rows can be filtered by contents using the search box (only naive substring matching supported).</li>
-        </ul>
+            <h3>Customizing the Queue's Contents</h3>
+
+            <p>
+                Homu provides a few simple ways to customize the queue's contents to fit your needs:
+            </p>
+
+            <ul>
+                <li><code>queue/rust+cargo</code> will combine the queues of the <code>rust</code> and <code>cargo</code> repos (for example).</li>
+                <li><a href="queue/all">queue/all</a> will combine the queues of all registered repos.</li>
+                <li>Rows can be sorted by column by clicking on column headings.</li>
+                <li>Rows can be filtered by contents using the search box (only naive substring matching supported).</li>
+            </ul>
+
+        </div>
     </body>
 </html>

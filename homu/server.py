@@ -980,6 +980,7 @@ def start(cfg, states, queue_handler, repo_cfgs, repos, logger,
         loader=jinja2.FileSystemLoader(pkg_resources.resource_filename(__name__, 'html')),  # noqa
         autoescape=True,
     )
+    env.globals["announcement"] = cfg["web"].get("announcement")
     tpls = {}
     tpls['index'] = env.get_template('index.html')
     tpls['queue'] = env.get_template('queue.html')

@@ -52,6 +52,10 @@ sync_on_start = true
 # instance was moved from a subdirectory of a domain to the top level.
 #remove_path_prefixes = ["homu"]
 
+# Message to display on top of the web interface. It's possible to use
+# arbitrary HTML tags in the message.
+#announcement = "Homu will be offline tomorrow for maintenance."
+
 # Custom hooks can be added as well.
 # Homu will ping the given endpoint with POSTdata of the form:
 # {'body': 'comment body', 'extra_data': 'extra data', 'pull': pull req number}
