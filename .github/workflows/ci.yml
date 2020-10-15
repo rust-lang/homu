@@ -34,3 +34,16 @@ jobs:
 
       - name: Run the test suite
         run: python3 setup.py test
+
+      - name: Build the Docker image
+        run: docker build -t homu .
+
+      - name: Upload the Docker image to AWS ECR
+        uses: rust-lang/simpleinfra/github-actions/upload-docker-image@master
+        with:
+          image: homu
+          repository: bors
+          region: us-west-1
+          aws_access_key_id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws_secret_access_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        if: github.event_name == 'push' && github.repository == 'rust-lang/homu' && github.ref == 'refs/heads/master'
