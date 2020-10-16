@@ -44,6 +44,8 @@ jobs:
           image: homu
           repository: bors
           region: us-west-1
+          redeploy_ecs_cluster: rust-ecs-prod
+          redeploy_ecs_service: bors
           aws_access_key_id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws_secret_access_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         if: github.event_name == 'push' && github.repository == 'rust-lang/homu' && github.ref == 'refs/heads/master'
