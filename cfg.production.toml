@@ -19,6 +19,20 @@ host = '0.0.0.0'
 port = 80
 announcement = "This is a test instance of bors. It will be removed in the near future."
 
+############
+#  Crater  #
+############
+
+[repo.crater]
+owner = "rust-lang"
+name = "crater"
+timeout = 5400
+
+# Permissions managed through rust-lang/team
+rust_team = true
+reviewers = []
+try_users = []
+
 [repo.crater.github]
 secret = "${HOMU_WEBHOOK_SECRET_CRATER}"
 [repo.crater.checks.actions]
