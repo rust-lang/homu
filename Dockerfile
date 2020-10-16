@@ -15,6 +15,11 @@ COPY homu/ /src/homu/
 # directory.
 RUN pip3 install -e /src/
 
+# Ensure the host SSH key for github.com is trusted by the container. If this
+# is not run, homu will fail to authenticate SSH connections with GitHub.
+RUN mkdir /root/.ssh && \
+    ssh-keyscan github.com >> /root/.ssh/known_hosts
+
 # Allow logs to show up timely on CloudWatch.
 ENV PYTHONUNBUFFERED=1
 
