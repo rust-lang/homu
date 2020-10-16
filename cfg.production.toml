@@ -20,6 +20,6 @@ port = 80
 announcement = "This is a test instance of bors. It will be removed in the near future."
 
 [repo.crater.github]
-secret = "{{ homu.repo-secrets.crater }}"
+secret = "${HOMU_WEBHOOK_SECRET_CRATER}"
 [repo.crater.checks.actions]
 name = "bors build finished"
