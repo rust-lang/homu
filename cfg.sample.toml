@@ -23,10 +23,14 @@ app_client_secret = ""
 
 
 [git]
-
 # Use the local Git command. Required to use some advanced features. It also
 # speeds up Travis by reducing temporary commits.
 #local_git = false
+
+# Directory storing the local clones of the git repositories. If this is on an
+# ephemeral file system, there will be a delay to start new builds after a
+# restart while homu clones the repository.
+# cache_dir = "cache"
 
 # SSH private key. Needed only when the local Git command is used.
 #ssh_key = """

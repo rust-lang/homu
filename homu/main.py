@@ -837,7 +837,7 @@ def git_push(git_cmd, branch, state):
 
 
 def init_local_git_cmds(repo_cfg, git_cfg):
-    fpath = 'cache/{}/{}'.format(repo_cfg['owner'], repo_cfg['name'])
+    fpath = os.path.join(git_cfg["cache_dir"], repo_cfg['owner'], repo_cfg['name'])
     genurl = lambda cfg: 'git@github.com:{}/{}.git'.format(cfg['owner'], cfg['name'])  # noqa
 
     if not os.path.exists(SSH_KEY_FILE):
@@ -847,6 +847,7 @@ def init_local_git_cmds(repo_cfg, git_cfg):
         os.chmod(SSH_KEY_FILE, 0o600)
 
     if not os.path.exists(fpath):
+        print("initialized local git repository at", fpath)
         utils.logged_call(['git', 'init', fpath])
 
     remotes = {
@@ -1693,6 +1694,7 @@ def main():
         'email': user_email,
         'ssh_key': cfg_git.get('ssh_key', ''),
         'local_git': cfg_git.get('local_git', False),
+        'cache_dir': cfg_git.get('cache_dir', 'cache')
     }
 
     db_file = cfg.get('db', {}).get('file', 'main.db')
