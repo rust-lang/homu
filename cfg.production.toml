@@ -17,7 +17,405 @@ ${HOMU_SSH_KEY}
 [web]
 host = '0.0.0.0'
 port = 80
-announcement = "This is a test instance of bors. It will be removed in the near future."
+
+canonical_url = "https://bors.rust-lang.org"
+remove_path_prefixes = ["homu"]
+
+announcement = "We migrated bors to a new home: <a href=\"https://bors.rust-lang.org\">bors.rust-lang.org</a>! Update your bookmarks."
+
+##########
+#  Rust  #
+##########
+
+[repo.rust]
+owner = "rust-lang"
+name = "rust"
+timeout = 15300
+
+# Permissions managed through rust-lang/team
+rust_team = true
+reviewers = []
+try_users = []
+
+[repo.rust.test-on-fork]
+owner = "rust-lang-ci"
+name = "rust"
+
+[repo.rust.github]
+secret = "${HOMU_WEBHOOK_SECRET_RUST}"
+[repo.rust.checks.azure]
+name = "fork-auto"
+try_name = "fork-try"
+[repo.rust.checks.actions]
+name = "bors build finished"
+
+# Automatic relabeling
+[repo.rust.labels.approved]   # after homu received `r+`
+remove = ['S-blocked', 'S-waiting-on-author', 'S-waiting-on-bors', 'S-waiting-on-crater', 'S-waiting-on-review', 'S-waiting-on-team']
+add = ['S-waiting-on-bors']
+
+[repo.rust.labels.rejected]   # after homu received `r-`
+remove = ['S-blocked', 'S-waiting-on-author', 'S-waiting-on-bors', 'S-waiting-on-crater', 'S-waiting-on-review', 'S-waiting-on-team']
+add = ['S-waiting-on-author']
+
+[repo.rust.labels.failed]     # test failed (maybe spurious, so fall back to -on-review)
+remove = ['S-blocked', 'S-waiting-on-author', 'S-waiting-on-bors', 'S-waiting-on-crater', 'S-waiting-on-review', 'S-waiting-on-team']
+add = ['S-waiting-on-review']
+
+[repo.rust.labels.timed_out]   # test timed out after 4 hours (almost always spurious, let reviewer retry)
+remove = ['S-blocked', 'S-waiting-on-author', 'S-waiting-on-bors', 'S-waiting-on-crater', 'S-waiting-on-review', 'S-waiting-on-team']
+add = ['S-waiting-on-review']
+
+[repo.rust.labels.try_failed]  # try-build failed (almost always legit, tell author to fix the PR)
+remove = ['S-waiting-on-review', 'S-waiting-on-crater']
+add = ['S-waiting-on-author']
+
+[repo.rust.labels.pushed]      # user pushed a commit after `r+`/`try`
+remove = ['S-waiting-on-bors', 'S-waiting-on-author']
+add = ['S-waiting-on-review']
+unless = ['S-blocked', 'S-waiting-on-crater', 'S-waiting-on-team']
+
+[repo.rust.labels.conflict]    # a merge conflict is detected (tell author to rebase)
+remove = ['S-waiting-on-bors']
+add = ['S-waiting-on-author']
+unless = ['S-blocked', 'S-waiting-on-crater', 'S-waiting-on-team', 'S-waiting-on-review']
+
+[repo.rust.labels.succeed]
+add = ['merged-by-bors']
+
+[repo.rust.labels.rollup_made]
+add = ['rollup']
+
+###########
+#  Cargo  #
+###########
+
+[repo.cargo]
+owner = "rust-lang"
+name = "cargo"
+timeout = 7200
+
+# Permissions managed through rust-lang/team
+rust_team = true
+reviewers = []
+try_users = []
+
+[repo.cargo.branch]
+auto = "auto-cargo"
+[repo.cargo.github]
+secret = "${HOMU_WEBHOOK_SECRET_CARGO}"
+[repo.cargo.checks.actions]
+name = "bors build finished"
+[repo.cargo.labels.approved]   # after homu received `r+`
+remove = ['S-blocked', 'S-waiting-on-author', 'S-waiting-on-bors', 'S-waiting-on-review']
+add = ['S-waiting-on-bors']
+[repo.cargo.labels.rejected]   # after homu received `r-`
+remove = ['S-blocked', 'S-waiting-on-author', 'S-waiting-on-bors', 'S-waiting-on-review']
+add = ['S-waiting-on-author']
+[repo.cargo.labels.failed]     # test failed (maybe spurious, so fall back to -on-review)
+remove = ['S-blocked', 'S-waiting-on-author', 'S-waiting-on-bors', 'S-waiting-on-review']
+add = ['S-waiting-on-review']
+[repo.cargo.labels.timed_out]   # test timed out after 4 hours (almost always spurious, let reviewer retry)
+remove = ['S-blocked', 'S-waiting-on-author', 'S-waiting-on-bors', 'S-waiting-on-review']
+add = ['S-waiting-on-review']
+[repo.cargo.labels.try_failed]  # try-build failed (almost always legit, tell author to fix the PR)
+remove = ['S-waiting-on-review']
+add = ['S-waiting-on-author']
+[repo.cargo.labels.pushed]      # user pushed a commit after `r+`/`try`
+remove = ['S-waiting-on-bors', 'S-waiting-on-author']
+add = ['S-waiting-on-review']
+unless = ['S-blocked']
+[repo.cargo.labels.conflict]    # a merge conflict is detected (tell author to rebase)
+remove = ['S-waiting-on-bors']
+add = ['S-waiting-on-author']
+unless = ['S-blocked', 'S-waiting-on-review']
+
+##########
+#  libc  #
+##########
+
+[repo.libc]
+owner = "rust-lang"
+name = "libc"
+timeout = 9000
+
+# Permissions managed through rust-lang/team
+rust_team = true
+reviewers = []
+try_users = []
+
+[repo.libc.branch]
+auto = "auto-libc"
+
+[repo.libc.github]
+secret = "${HOMU_WEBHOOK_SECRET_LIBC}"
+
+[repo.libc.checks.actions]
+name = "bors build finished"
+[repo.libc.checks.cirrus-freebsd-11]
+name = "stable x86_64-unknown-freebsd-11"
+[repo.libc.checks.cirrus-freebsd-12]
+name = "nightly x86_64-unknown-freebsd-12"
+[repo.libc.checks.cirrus-freebsd-13]
+name = "nightly x86_64-unknown-freebsd-13"
+[repo.libc.labels.approved]   # after homu received `r+`
+remove = ['S-blocked', 'S-waiting-on-author', 'S-waiting-on-bors', 'S-waiting-on-review']
+add = ['S-waiting-on-bors']
+[repo.libc.labels.failed]     # test failed (maybe spurious, so fall back to -on-review)
+remove = ['S-blocked', 'S-waiting-on-author', 'S-waiting-on-bors', 'S-waiting-on-review']
+add = ['S-waiting-on-review']
+
+#############
+#  stdarch  #
+#############
+
+[repo.stdarch]
+owner = "rust-lang"
+name = "stdarch"
+timeout = 9000
+
+# Permissions managed through rust-lang/team
+rust_team = true
+reviewers = []
+try_users = []
+
+[repo.stdarch.github]
+secret = "${HOMU_WEBHOOK_SECRET_STDARCH}"
+
+[repo.stdarch.status.azure]
+context = "rust-lang.stdarch"
+[repo.stdarch.checks.cirrus-freebsd]
+name = "x86_64-unknown-freebsd"
+
+############
+#  rustup  #
+############
+
+[repo.rustup]
+owner = "rust-lang"
+name = "rustup"
+timeout = 12600
+
+# Permissions managed through rust-lang/team
+rust_team = true
+reviewers = []
+try_users = []
+
+[repo.rustup.branch]
+auto = "auto"
+
+[repo.rustup.github]
+secret = "${HOMU_WEBHOOK_SECRET_RUSTUP}"
+
+[repo.rustup.checks.travis]
+name = "Travis CI - Branch"
+[repo.rustup.status.appveyor]
+context = "continuous-integration/appveyor/branch"
+
+#######################
+#  compiler-builtins  #
+#######################
+
+[repo.compiler-builtins]
+owner = "rust-lang"
+name = "compiler-builtins"
+
+# Permissions managed through rust-lang/team
+rust_team = true
+reviewers = []
+try_users = []
+
+[repo.compiler-builtins.branch]
+auto = "auto"
+
+[repo.compiler-builtins.github]
+secret = "${HOMU_WEBHOOK_SECRET_COMPILER_BUILTINS}"
+
+[repo.compiler-builtins.checks.travis]
+name = "Travis CI - Branch"
+[repo.compiler-builtins.status.appveyor]
+context = "continuous-integration/appveyor/branch"
+
+############
+#  Clippy  #
+############
+
+[repo.clippy]
+owner = "rust-lang"
+name = "rust-clippy"
+timeout = 5400
+
+# Permissions managed through rust-lang/team
+rust_team = true
+reviewers = []
+try_users = []
+
+[repo.clippy.branch]
+auto = "auto"
+[repo.clippy.github]
+secret = "${HOMU_WEBHOOK_SECRET_CLIPPY}"
+[repo.clippy.checks.action_test]
+name = "bors test finished"
+[repo.clippy.checks.action_dev_test]
+name = "bors dev test finished"
+[repo.clippy.checks.action_remark_test]
+name = "bors remark test finished"
+
+#########
+#  RLS  #
+#########
+
+[repo.rls]
+owner = "rust-lang"
+name = "rls"
+timeout = 5400
+
+# Permissions managed through rust-lang/team
+rust_team = true
+reviewers = []
+try_users = []
+
+[repo.rls.github]
+secret = "${HOMU_WEBHOOK_SECRET_RLS}"
+[repo.rls.checks.azure]
+name = "rust-lang.rls"
+
+###############
+#  crates.io  #
+###############
+
+[repo.crates-io]
+owner = "rust-lang"
+name = "crates.io"
+timeout = 1800
+
+# Permissions managed through rust-lang/team
+rust_team = true
+reviewers = []
+try_users = []
+
+[repo.crates-io.github]
+secret = "${HOMU_WEBHOOK_SECRET_CRATES_IO}"
+[repo.crates-io.checks.travis]
+name = "Travis CI - Branch"
+
+###########
+#  Chalk  #
+###########
+
+[repo.chalk]
+owner = "rust-lang"
+name = "chalk"
+timeout = 1800
+
+# Permissions managed through rust-lang/team
+rust_team = true
+reviewers = []
+try_users = []
+
+[repo.chalk.github]
+secret = "${HOMU_WEBHOOK_SECRET_CHALK}"
+[repo.chalk.checks.actions]
+name = "bors build finished"
+
+###############
+#  rustlings  #
+###############
+
+[repo.rustlings]
+owner = "rust-lang"
+name = "rustlings"
+timeout = 5400
+
+# Permissions managed through rust-lang/team
+rust_team = true
+reviewers = []
+try_users = []
+
+[repo.rustlings.github]
+secret = "${HOMU_WEBHOOK_SECRET_RUSTLINGS}"
+[repo.rustlings.checks.travis]
+name = "Travis CI - Branch"
+
+# Automatic relabeling
+[repo.rustlings.labels.approved]   # after homu received `r+`
+remove = ['S-blocked', 'S-waiting-on-author', 'S-waiting-on-bors', 'S-waiting-on-review']
+add = ['S-waiting-on-bors']
+
+[repo.rustlings.labels.rejected]   # after homu received `r-`
+remove = ['S-blocked', 'S-waiting-on-author', 'S-waiting-on-bors', 'S-waiting-on-review']
+add = ['S-waiting-on-author']
+
+[repo.rustlings.labels.failed]     # test failed (maybe spurious, so fall back to -on-review)
+remove = ['S-blocked', 'S-waiting-on-author', 'S-waiting-on-bors', 'S-waiting-on-review']
+add = ['S-waiting-on-review']
+
+[repo.rustlings.labels.timed_out]   # test timed out after 4 hours (almost always spurious, let reviewer retry)
+remove = ['S-blocked', 'S-waiting-on-author', 'S-waiting-on-bors', 'S-waiting-on-review']
+add = ['S-waiting-on-review']
+
+[repo.rustlings.labels.try_failed]  # try-build failed (almost always legit, tell author to fix the PR)
+remove = ['S-waiting-on-review']
+add = ['S-waiting-on-author']
+
+[repo.rustlings.labels.pushed]      # user pushed a commit after `r+`/`try`
+remove = ['S-waiting-on-bors', 'S-waiting-on-author']
+add = ['S-waiting-on-review']
+unless = ['S-blocked']
+
+[repo.rustlings.labels.conflict]    # a merge conflict is detected (tell author to rebase)
+remove = ['S-waiting-on-bors']
+add = ['S-waiting-on-author']
+unless = ['S-blocked', 'S-waiting-on-review']
+
+[repo.rustlings.labels.succeed]
+add = ['merged-by-bors']
+
+###############
+#  Hashbrown  #
+###############
+
+[repo.hashbrown]
+owner = "rust-lang"
+name = "hashbrown"
+timeout = 5400
+
+# Permissions managed through rust-lang/team
+rust_team = true
+reviewers = []
+try_users = []
+
+[repo.hashbrown.branch]
+auto = "auto"
+[repo.hashbrown.github]
+secret = "${HOMU_WEBHOOK_SECRET_HASHBROWN}"
+[repo.hashbrown.checks.travis]
+name = "Travis CI - Branch"
+
+##########
+#  MIRI  #
+##########
+
+[repo.miri]
+owner = "rust-lang"
+name = "miri"
+timeout = 7200
+
+# Permissions managed through rust-lang/team
+rust_team = true
+reviewers = []
+try_users = []
+
+[repo.miri.branch]
+auto = "auto"
+[repo.miri.github]
+secret = "${HOMU_WEBHOOK_SECRET_MIRI}"
+[repo.miri.checks.actions]
+name = "bors build finished"
+[repo.miri.checks.travis]
+name = "Travis CI - Branch"
+[repo.miri.status.appveyor]
+context = "continuous-integration/appveyor/branch"
 
 ############
 #  Crater  #
