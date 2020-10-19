@@ -980,7 +980,7 @@ def redirect_to_canonical_host():
             redirect_url = redirect_url._replace(path="/")
 
     if request_url != redirect_url:
-        redirect(urllib.parse.urlunparse(redirect_url))
+        redirect(urllib.parse.urlunparse(redirect_url), 301)
 
 
 def start(cfg, states, queue_handler, repo_cfgs, repos, logger,
