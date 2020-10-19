@@ -950,9 +950,18 @@ def admin():
     return 'Unrecognized command'
 
 
+@get('/health')
+def health():
+    return 'OK'
+
+
 def redirect_to_canonical_host():
     request_url = urllib.parse.urlparse(request.url)
     redirect_url = request_url
+
+    # Disable redirects on the health check endpoint.
+    if request_url.path == "/health":
+        return
 
     # Handle hostname changes
     if "canonical_url" in g.cfg["web"]:
