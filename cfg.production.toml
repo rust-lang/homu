@@ -18,9 +18,6 @@ ${HOMU_SSH_KEY}
 host = '0.0.0.0'
 port = 80
 
-canonical_url = "https://bors.rust-lang.org"
-remove_path_prefixes = ["homu"]
-
 announcement = "We migrated bors to a new home: <a href=\"https://bors.rust-lang.org\">bors.rust-lang.org</a>! Update your bookmarks."
 
 ##########
