@@ -837,7 +837,7 @@ def git_push(git_cmd, branch, state):
 
 
 def init_local_git_cmds(repo_cfg, git_cfg):
-    fpath = os.path.join(git_cfg["cache_dir"], repo_cfg['owner'], repo_cfg['name'])
+    fpath = os.path.join(git_cfg["cache_dir"], repo_cfg['owner'], repo_cfg['name'])  # noqa
     genurl = lambda cfg: 'git@github.com:{}/{}.git'.format(cfg['owner'], cfg['name'])  # noqa
 
     if not os.path.exists(SSH_KEY_FILE):
