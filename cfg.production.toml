@@ -189,55 +189,6 @@ context = "rust-lang.stdarch"
 name = "x86_64-unknown-freebsd"
 
 ############
-#  rustup  #
-############
-
-[repo.rustup]
-owner = "rust-lang"
-name = "rustup"
-timeout = 12600
-
-# Permissions managed through rust-lang/team
-rust_team = true
-reviewers = []
-try_users = []
-
-[repo.rustup.branch]
-auto = "auto"
-
-[repo.rustup.github]
-secret = "${HOMU_WEBHOOK_SECRET_RUSTUP}"
-
-[repo.rustup.checks.travis]
-name = "Travis CI - Branch"
-[repo.rustup.status.appveyor]
-context = "continuous-integration/appveyor/branch"
-
-#######################
-#  compiler-builtins  #
-#######################
-
-[repo.compiler-builtins]
-owner = "rust-lang"
-name = "compiler-builtins"
-
-# Permissions managed through rust-lang/team
-rust_team = true
-reviewers = []
-try_users = []
-
-[repo.compiler-builtins.branch]
-auto = "auto"
-
-[repo.compiler-builtins.github]
-secret = "${HOMU_WEBHOOK_SECRET_COMPILER_BUILTINS}"
-
-[repo.compiler-builtins.checks.travis]
-name = "Travis CI - Branch"
-[repo.compiler-builtins.status.appveyor]
-context = "continuous-integration/appveyor/branch"
-
-############
 #  Clippy  #
 ############
 
@@ -318,59 +269,6 @@ try_users = []
 secret = "${HOMU_WEBHOOK_SECRET_CHALK}"
 [repo.chalk.checks.actions]
 name = "bors build finished"
-
-###############
-#  rustlings  #
-###############
-
-[repo.rustlings]
-owner = "rust-lang"
-name = "rustlings"
-timeout = 5400
-
-# Permissions managed through rust-lang/team
-rust_team = true
-reviewers = []
-try_users = []
-
-[repo.rustlings.github]
-secret = "${HOMU_WEBHOOK_SECRET_RUSTLINGS}"
-[repo.rustlings.checks.travis]
-name = "Travis CI - Branch"
-
-# Automatic relabeling
-[repo.rustlings.labels.approved]   # after homu received `r+`
-remove = ['S-blocked', 'S-waiting-on-author', 'S-waiting-on-bors', 'S-waiting-on-review']
-add = ['S-waiting-on-bors']
-
-[repo.rustlings.labels.rejected]   # after homu received `r-`
-remove = ['S-blocked', 'S-waiting-on-author', 'S-waiting-on-bors', 'S-waiting-on-review']
-add = ['S-waiting-on-author']
-
-[repo.rustlings.labels.failed]     # test failed (maybe spurious, so fall back to -on-review)
-remove = ['S-blocked', 'S-waiting-on-author', 'S-waiting-on-bors', 'S-waiting-on-review']
-add = ['S-waiting-on-review']
-
-[repo.rustlings.labels.timed_out]   # test timed out after 4 hours (almost always spurious, let reviewer retry)
-remove = ['S-blocked', 'S-waiting-on-author', 'S-waiting-on-bors', 'S-waiting-on-review']
-add = ['S-waiting-on-review']
-
-[repo.rustlings.labels.try_failed]  # try-build failed (almost always legit, tell author to fix the PR)
-remove = ['S-waiting-on-review']
-add = ['S-waiting-on-author']
-
-[repo.rustlings.labels.pushed]      # user pushed a commit after `r+`/`try`
-remove = ['S-waiting-on-bors', 'S-waiting-on-author']
-add = ['S-waiting-on-review']
-unless = ['S-blocked']
-
-[repo.rustlings.labels.conflict]    # a merge conflict is detected (tell author to rebase)
-remove = ['S-waiting-on-bors']
-add = ['S-waiting-on-author']
-unless = ['S-blocked', 'S-waiting-on-review']
-
-[repo.rustlings.labels.succeed]
-add = ['merged-by-bors']
 
 ###############
 #  Hashbrown  #
