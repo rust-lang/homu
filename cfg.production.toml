@@ -44,9 +44,6 @@ name = "rust"
 
 [repo.rust.github]
 secret = "${HOMU_WEBHOOK_SECRET_RUST}"
-[repo.rust.checks.azure]
-name = "fork-auto"
-try_name = "fork-try"
 [repo.rust.checks.actions]
 name = "bors build finished"
 
