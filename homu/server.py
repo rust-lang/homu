@@ -342,7 +342,8 @@ def rollup(user_gh, state, repo_label, repo_cfg, repo):
 
     if base_url:
         pr_list = ','.join(str(x.num) for x in successes)
-        body += '\n\n[Create a similar rollup]({}/queue/{}?prs={})'.format(base_url, repo_label, pr_list)
+        body += ('\n\n[Create a similar rollup]({}/queue/{}?prs={})'
+                .format(base_url, repo_label, pr_list))
 
     try:
         pull = base_repo.create_pull(
