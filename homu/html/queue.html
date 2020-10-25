@@ -187,9 +187,14 @@
 
             <tbody>
                 {% for state in states %}
+                {% set checkbox_state =
+                    ('checked' if state.prechecked else '') if
+                        ((state.status == 'approved' or (state.status == 'pending' and not state.try_)) and state.rollup != 'never')
+                    else 'disabled'
+                %}
                 <tr class="{{state.greyed}}">
                     <td class="hide">{{loop.index}}</td>
-                    <td><input type="checkbox" data-num="{{state.num}}" {{ '' if ((state.status == 'approved' or (state.status == 'pending' and not state.try_)) and state.rollup != 'never') else 'disabled' }}></td>
+                    <td><input type="checkbox" data-num="{{state.num}}" {{checkbox_state}}></td>
                     {% if multiple %}
                     <td><a href="{{state.repo_url}}">{{state.repo_label}}</a></td>
                     {% endif %}

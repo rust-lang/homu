@@ -51,6 +51,12 @@ port = 54856
 # all open PRs.
 sync_on_start = true
 
+# The base url used for links pointing to this homu instance.
+# If base_url is not present, links will use canonical_url as a fallback.
+# If neither base_url nor canonical_url are present, no links to this homu
+# instance will be generated.
+#base_url = "https://bors.example.com"
+
 # The canonical URL of this homu instance. If a user reaches the instance
 # through a different path they will be redirected. If this is not present in
 # the configuration homu will still work, but no redirect will be performed.

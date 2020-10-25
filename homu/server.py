@@ -139,6 +139,10 @@ def queue(repo_label):
         except KeyError:
             abort(404, 'No such repository: {}'.format(label))
 
+    prechecked_prs = set()
+    if request.query.get('prs'):
+        prechecked_prs = set(request.query.get('prs').split(','))
+
     pull_states = sorted(states)
     rows = []
     for state in pull_states:
@@ -154,6 +158,7 @@ def queue(repo_label):
             'status_ext': status_ext,
             'priority': state.priority,
             'rollup': ROLLUP_STR.get(state.rollup, ''),
+            'prechecked': str(state.num) in prechecked_prs,
             'url': 'https://github.com/{}/{}/pull/{}'.format(state.owner,
                                                              state.name,
                                                              state.num),
@@ -328,6 +333,16 @@ def rollup(user_gh, state, repo_label, repo_cfg, repo):
     for x in failures:
         body += ' - #{} ({})\n'.format(x.num, x.title)
     body += '\nr? @ghost'
+
+    # Set web.base_url in cfg to enable
+    base_url = g.cfg['web'].get('base_url')
+    if not base_url:
+        # If web.base_url is not present, fall back to using web.canonical_url
+        base_url = g.cfg['web'].get('canonical_url')
+
+    if base_url:
+        pr_list = ','.join(x.num for x in successes)
+        body += '\n\n[Create a similar rollup]({}/queue/{}?prs={})'.format(base_url, repo_label, pr_list)
 
     try:
         pull = base_repo.create_pull(
