@@ -264,6 +264,8 @@ def callback():
 
 def rollup(user_gh, state, repo_label, repo_cfg, repo):
     user_repo = user_gh.repository(user_gh.user().login, repo.name)
+    if user_repo is None:
+        return 'You must have a fork of rust-lang/rust named rust under your user account.'  # noqa
     base_repo = user_gh.repository(repo.owner.login, repo.name)
 
     nums = state.get('nums', [])
