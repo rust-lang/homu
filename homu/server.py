@@ -327,7 +327,7 @@ def rollup(user_gh, state, repo_label, repo_cfg, repo):
     body += '\nFailed merges:\n\n'
     for x in failures:
         body += ' - #{} ({})\n'.format(x.num, x.title)
-    body += '\nr? @ghost'
+    body += '\nr? @ghost\n@rustbot modify labels: rollup'
 
     try:
         pull = base_repo.create_pull(
