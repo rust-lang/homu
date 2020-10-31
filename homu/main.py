@@ -43,8 +43,12 @@ VARIABLES_RE = re.compile(r'\${([a-zA-Z_]+)}')
 
 IGNORE_BLOCK_START = '<!-- homu-ignore:start -->'
 IGNORE_BLOCK_END = '<!-- homu-ignore:end -->'
-IGNORE_BLOCK_RE = re.compile(r'<!--\s*homu-ignore:start\s*-->.*<!--\s*homu-ignore:end\s*-->',
-                    flags=re.MULTILINE|re.DOTALL|re.IGNORECASE)
+IGNORE_BLOCK_RE = re.compile(
+                    r'<!--\s*homu-ignore:start\s*-->'
+                    r'.*'
+                    r'<!--\s*homu-ignore:end\s*-->',
+                    flags=re.MULTILINE | re.DOTALL | re.IGNORECASE
+                )
 
 global_cfg = {}
 
@@ -53,6 +57,7 @@ global_cfg = {}
 # Note: Don't replace non-mentions like "email@gmail.com".
 def suppress_pings(text):
     return re.sub(r'\B(@\S+)', r'`\g<1>`', text)  # noqa
+
 
 # Replace any text between IGNORE_BLOCK_START and IGNORE_BLOCK_END
 # HTML comments with an empty string in merge commits
