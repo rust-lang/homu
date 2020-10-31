@@ -5,7 +5,11 @@ from .main import (
     PullReqState,
     parse_commands,
     db_query,
+    IGNORE_BLOCK_END,
+    IGNORE_BLOCK_START,
     INTERRUPTED_BY_HOMU_RE,
+    suppress_ignore_block,
+    suppress_pings,
     synchronize,
     LabelEvent,
 )
@@ -306,6 +310,9 @@ def rollup(user_gh, state, repo_label, repo_cfg, repo):
             failures.append(state.num)
             continue
 
+        state.body = suppress_pings(state.body)
+        state.body = suppress_ignore_block(state.body)
+
         merge_msg = 'Rollup merge of #{} - {}, r={}\n\n{}\n\n{}'.format(
             state.num,
             state.head_ref,
@@ -343,7 +350,10 @@ def rollup(user_gh, state, repo_label, repo_cfg, repo):
     if base_url:
         pr_list = ','.join(str(x.num) for x in successes)
         link = '{}/queue/{}?prs={}'.format(base_url, repo_label, pr_list)
-        body += '\n\n[Create a similar rollup]({})'.format(link)
+        body += '\n'
+        body += IGNORE_BLOCK_START
+        body += '\n[Create a similar rollup]({})\n'.format(link)
+        body += IGNORE_BLOCK_END
 
     try:
         pull = base_repo.create_pull(
