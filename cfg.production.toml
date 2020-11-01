@@ -326,3 +326,22 @@ try_users = []
 secret = "${HOMU_WEBHOOK_SECRET_CRATER}"
 [repo.crater.checks.actions]
 name = "bors build finished"
+
+###############
+#  Semverver  #
+###############
+
+[repo.semverver]
+owner = "rust-lang"
+name = "rust-semverver"
+timeout = 5400
+
+# Permissions managed through rust-lang/team
+rust_team = true
+reviewers = []
+try_users = []
+
+[repo.semverver.github]
+secret = "${HOMU_WEBHOOK_SECRET_SEMVERVER}"
+[repo.semverver.checks.actions]
+name = "bors build finished"
