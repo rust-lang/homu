@@ -228,6 +228,25 @@ secret = "${HOMU_WEBHOOK_SECRET_RLS}"
 [repo.rls.checks.azure]
 name = "rust-lang.rls"
 
+################
+# vscode-rust  #
+################
+
+[repo.vscode-rust]
+owner = "rust-lang"
+name = "vscode-rust"
+timeout = 1800
+
+# Permissions managed through rust-lang/team
+rust_team = true
+reviewers = []
+try_users = []
+
+[repo.vscode-rust.github]
+secret = "${HOMU_WEBHOOK_SECRET_VSCODE_RUST}"
+[repo.vscode-rust.checks.actions]
+name = "bors build finished"
+
 ###############
 #  crates.io  #
 ###############
