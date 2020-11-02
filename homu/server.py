@@ -5,7 +5,11 @@ from .main import (
     PullReqState,
     parse_commands,
     db_query,
+    IGNORE_BLOCK_END,
+    IGNORE_BLOCK_START,
     INTERRUPTED_BY_HOMU_RE,
+    suppress_ignore_block,
+    suppress_pings,
     synchronize,
     LabelEvent,
 )
@@ -139,6 +143,10 @@ def queue(repo_label):
         except KeyError:
             abort(404, 'No such repository: {}'.format(label))
 
+    prechecked_prs = set()
+    if request.query.get('prs'):
+        prechecked_prs = set(request.query.get('prs').split(','))
+
     pull_states = sorted(states)
     rows = []
     for state in pull_states:
@@ -154,6 +162,7 @@ def queue(repo_label):
             'status_ext': status_ext,
             'priority': state.priority,
             'rollup': ROLLUP_STR.get(state.rollup, ''),
+            'prechecked': str(state.num) in prechecked_prs,
             'url': 'https://github.com/{}/{}/pull/{}'.format(state.owner,
                                                              state.name,
                                                              state.num),
@@ -303,6 +312,9 @@ def rollup(user_gh, state, repo_label, repo_cfg, repo):
             failures.append(state.num)
             continue
 
+        state.body = suppress_pings(state.body)
+        state.body = suppress_ignore_block(state.body)
+
         merge_msg = 'Rollup merge of #{} - {}, r={}\n\n{}\n\n{}'.format(
             state.num,
             state.head_ref,
@@ -330,6 +342,20 @@ def rollup(user_gh, state, repo_label, repo_cfg, repo):
     for x in failures:
         body += ' - #{} ({})\n'.format(x.num, x.title)
     body += '\nr? @ghost'
+
+    # Set web.base_url in cfg to enable
+    base_url = g.cfg['web'].get('base_url')
+    if not base_url:
+        # If web.base_url is not present, fall back to using web.canonical_url
+        base_url = g.cfg['web'].get('canonical_url')
+
+    if base_url:
+        pr_list = ','.join(str(x.num) for x in successes)
+        link = '{}/queue/{}?prs={}'.format(base_url, repo_label, pr_list)
+        body += '\n'
+        body += IGNORE_BLOCK_START
+        body += '\n[Create a similar rollup]({})\n'.format(link)
+        body += IGNORE_BLOCK_END
 
     try:
         pull = base_repo.create_pull(
