@@ -22,7 +22,7 @@ base_url = "https://bors.rust-lang.org"
 canonical_url = "https://bors.rust-lang.org"
 remove_path_prefixes = ["homu"]
 
-announcement = "We migrated bors to a new home: <a href=\"https://bors.rust-lang.org\">bors.rust-lang.org</a>! Update your bookmarks."
+#announcement = "Hello world!"
 
 ##########
 #  Rust  #
