@@ -43,7 +43,7 @@ before the merge" came from bors. However, there are also some differences:
 
 1. Stateful: Unlike bors, which intends to be stateless, Homu is stateful. It
    means that Homu does not need to retrieve all the information again and again
-   from GitHub at every run. This is essential because of the GitHub's rate
+   from GitHub at every run. This is essential because of GitHub's rate
    limiting. Once it downloads the initial state, the following changes are
    delivered with the [Webhooks] API.
 2. Pushing over polling: Homu prefers pushing wherever possible. The pull
@@ -87,7 +87,7 @@ the name of the repository you are configuring homu for.
    existing account. In the [account settings][settings], go to "OAuth
    applications" and create a new application:
    - Make note of the "Client ID" and "Client Secret"; you will need to put them in
-   your `cgf.toml`.
+   your `cfg.toml`.
    - The OAuth Callback URL should be `http://HOST:PORT/callback`.
    - The homepage URL isn't necessary; you could set `http://HOST:PORT/`.
    
