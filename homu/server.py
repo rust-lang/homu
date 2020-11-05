@@ -247,7 +247,6 @@ def callback():
     except Exception as ex:
         logger.warn('/callback encountered an error '
                     'during github oauth callback')
-        # probably related to https://gitlab.com/pycqa/flake8/issues/42
         lazy_debug(
             logger,
             lambda ex=ex: 'github oauth callback err: {}'.format(ex),
