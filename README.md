@@ -87,7 +87,7 @@ the name of the repository you are configuring homu for.
    existing account. In the [account settings][settings], go to "OAuth
    applications" and create a new application:
    - Make note of the "Client ID" and "Client Secret"; you will need to put them in
-   your `cgf.toml`.
+   your `cfg.toml`.
    - The OAuth Callback URL should be `http://HOST:PORT/callback`.
    - The homepage URL isn't necessary; you could set `http://HOST:PORT/`.
    
