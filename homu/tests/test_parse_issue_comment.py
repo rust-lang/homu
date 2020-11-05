@@ -52,6 +52,36 @@ def test_r_plus_with_sha():
     assert command.actor == 'jack'
     assert command.commit == other_commit
 
+def test_r_plus_await():
+    """
+    @bors r+ await
+    """
+
+    author = "jack"
+    body = "@bors r+ await"
+    commands = parse_issue_comment(author, body, commit, "bors")
+
+    assert len(commands) == 1
+    command = commands[0]
+    assert command.action == 'approve-await'
+    assert command.actor == 'jack'
+
+
+def test_r_plus_await_with_sha():
+    """
+    @bors r+ {sha} await
+    """
+
+    author = "jack"
+    body = "@bors r+ {} await".format(other_commit)
+    commands = parse_issue_comment(author, body, commit, "bors")
+
+    assert len(commands) == 1
+    command = commands[0]
+    assert command.action == 'approve-await'
+    assert command.actor == 'jack'
+    assert command.commit == other_commit
+
 
 def test_r_equals():
     """
@@ -80,6 +110,36 @@ def test_r_equals_at_user():
     assert len(commands) == 1
     command = commands[0]
     assert command.action == 'approve'
+    assert command.actor == 'jill'
+
+
+def test_r_equals_await():
+    """
+    @bors r=jill await
+    """
+
+    author = "jack"
+    body = "@bors r=jill await"
+    commands = parse_issue_comment(author, body, commit, "bors")
+
+    assert len(commands) == 1
+    command = commands[0]
+    assert command.action == 'approve-await'
+    assert command.actor == 'jill'
+
+
+def test_r_equals_at_user():
+    """
+    @bors r=@jill await
+    """
+
+    author = "jack"
+    body = "@bors r=@jill await"
+    commands = parse_issue_comment(author, body, commit, "bors")
+
+    assert len(commands) == 1
+    command = commands[0]
+    assert command.action == 'approve-await'
     assert command.actor == 'jill'
 
 
