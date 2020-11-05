@@ -43,7 +43,7 @@ before the merge" came from bors. However, there are also some differences:
 
 1. Stateful: Unlike bors, which intends to be stateless, Homu is stateful. It
    means that Homu does not need to retrieve all the information again and again
-   from GitHub at every run. This is essential because of the GitHub's rate
+   from GitHub at every run. This is essential because of GitHub's rate
    limiting. Once it downloads the initial state, the following changes are
    delivered with the [Webhooks] API.
 2. Pushing over polling: Homu prefers pushing wherever possible. The pull
