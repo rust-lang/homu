@@ -52,6 +52,7 @@ def test_r_plus_with_sha():
     assert command.actor == 'jack'
     assert command.commit == other_commit
 
+
 def test_r_plus_await():
     """
     @bors r+ await
@@ -128,7 +129,7 @@ def test_r_equals_await():
     assert command.actor == 'jill'
 
 
-def test_r_equals_at_user():
+def test_r_equals_at_user_await():
     """
     @bors r=@jill await
     """

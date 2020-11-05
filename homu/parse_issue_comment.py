@@ -206,7 +206,7 @@ def parse_issue_comment(username, body, sha, botname, hooks=[]):
 
             if await_ci:
                 commands.append(
-                        IssueCommentCommand.approve_await(approver, approved_sha))
+                        IssueCommentCommand.approve_await(approver, approved_sha))  # noqa
             else:
                 commands.append(
                         IssueCommentCommand.approve(approver, approved_sha))
