@@ -524,7 +524,10 @@ def parse_commands(body, username, user_id, repo_label, repo_cfg, state,
             result = _approve_common(
                 _reviewer_auth_verified=_reviewer_auth_verified,
                 command=command,
+                states=states,
                 state=state,
+                username=username,
+                my_username=my_username,
                 comment_factory=comments.Approved,
                 success_label=LabelEvent.APPROVED,
             )
@@ -535,7 +538,10 @@ def parse_commands(body, username, user_id, repo_label, repo_cfg, state,
             result = _approve_common(
                 _reviewer_auth_verified=_reviewer_auth_verified,
                 command=command,
+                states=states,
                 state=state,
+                username=username,
+                my_username=my_username,
                 comment_factory=comments.ApprovedAwait,
                 success_label=LabelEvent.APPROVED_AWAITING_CI,
             )
@@ -740,7 +746,17 @@ def parse_commands(body, username, user_id, repo_label, repo_cfg, state,
     return state_changed
 
 
-def _approve_common(_reviewer_auth_verified, command, state, realtime, comment_factory, success_label):
+def _approve_common(
+    _reviewer_auth_verified,
+    command,
+    states,
+    state,
+    username,
+    my_username,
+    realtime,
+    comment_factory,
+    success_label,
+):
     if not _reviewer_auth_verified():
         return 'skip'
 
