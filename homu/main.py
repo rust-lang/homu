@@ -465,6 +465,7 @@ class AuthState(IntEnum):
 
 class LabelEvent(Enum):
     APPROVED = 'approved'
+    APPROVED_AWAITING_CI = 'approved_awaiting_ci'
     REJECTED = 'rejected'
     CONFLICT = 'conflict'
     SUCCEED = 'succeed'
@@ -520,94 +521,32 @@ def parse_commands(body, username, user_id, repo_label, repo_cfg, state,
     for command in commands:
         found = True
         if command.action == 'approve':
-            if not _reviewer_auth_verified():
+            result = _approve_common(
+                _reviewer_auth_verified=_reviewer_auth_verified,
+                command=command,
+                states=states,
+                state=state,
+                username=username,
+                my_username=my_username,
+                comment_factory=comments.Approved,
+                success_label=LabelEvent.APPROVED,
+            )
+            if result == 'skip':
                 continue
 
-            approver = command.actor
-            cur_sha = command.commit
-
-            # Ignore WIP PRs
-            is_wip = False
-            for wip_kw in ['WIP', 'TODO', '[WIP]', '[TODO]', '[DO NOT MERGE]']:
-                if state.title.upper().startswith(wip_kw):
-                    if realtime:
-                        state.add_comment(comments.ApprovalIgnoredWip(
-                            sha=state.head_sha,
-                            wip_keyword=wip_kw,
-                        ))
-                    is_wip = True
-                    break
-            if is_wip:
+        elif command.action == 'approve-await':
+            result = _approve_common(
+                _reviewer_auth_verified=_reviewer_auth_verified,
+                command=command,
+                states=states,
+                state=state,
+                username=username,
+                my_username=my_username,
+                comment_factory=comments.ApprovedAwait,
+                success_label=LabelEvent.APPROVED_AWAITING_CI,
+            )
+            if result == 'skip':
                 continue
-
-            # Sometimes, GitHub sends the head SHA of a PR as 0000000
-            # through the webhook. This is called a "null commit", and
-            # seems to happen when GitHub internally encounters a race
-            # condition. Last time, it happened when squashing commits
-            # in a PR. In this case, we just try to retrieve the head
-            # SHA manually.
-            if all(x == '0' for x in state.head_sha):
-                if realtime:
-                    state.add_comment(
-                        ':bangbang: Invalid head SHA found, retrying: `{}`'
-                        .format(state.head_sha)
-                    )
-
-                state.head_sha = state.get_repo().pull_request(state.num).head.sha  # noqa
-                state.save()
-
-                assert any(x != '0' for x in state.head_sha)
-
-            if state.approved_by and realtime and username != my_username:
-                for _state in states[state.repo_label].values():
-                    if _state.status == 'pending':
-                        break
-                else:
-                    _state = None
-
-                lines = []
-
-                if state.status in ['failure', 'error']:
-                    lines.append('- This pull request previously failed. You should add more commits to fix the bug, or use `retry` to trigger a build again.')  # noqa
-
-                if _state:
-                    if state == _state:
-                        lines.append('- This pull request is currently being tested. If there\'s no response from the continuous integration service, you may use `retry` to trigger a build again.')  # noqa
-                    else:
-                        lines.append('- There\'s another pull request that is currently being tested, blocking this pull request: #{}'.format(_state.num))  # noqa
-
-                if lines:
-                    lines.insert(0, '')
-                lines.insert(0, ':bulb: This pull request was already approved, no need to approve it again.')  # noqa
-
-                state.add_comment('\n'.join(lines))
-
-            if sha_cmp(cur_sha, state.head_sha):
-                state.approved_by = approver
-                state.try_ = False
-                state.set_status('')
-
-                state.save()
-            elif realtime and username != my_username:
-                if cur_sha:
-                    msg = '`{}` is not a valid commit SHA.'.format(cur_sha)
-                    state.add_comment(
-                        ':scream_cat: {} Please try again with `{}`.'
-                        .format(msg, state.head_sha)
-                    )
-                else:
-                    state.add_comment(comments.Approved(
-                        sha=state.head_sha,
-                        approver=approver,
-                        bot=my_username,
-                    ))
-                    treeclosed = state.blocked_by_closed_tree()
-                    if treeclosed:
-                        state.add_comment(
-                            ':evergreen_tree: The tree is currently closed for pull requests below priority {}, this pull request will be tested once the tree is reopened'  # noqa
-                            .format(treeclosed)
-                        )
-                    state.change_labels(LabelEvent.APPROVED)
 
         elif command.action == 'unapprove':
             # Allow the author of a pull request to unapprove their own PR. The
@@ -805,6 +744,107 @@ def parse_commands(body, username, user_id, repo_label, repo_cfg, state,
             state_changed = True
 
     return state_changed
+
+
+def _approve_common(
+    _reviewer_auth_verified,
+    command,
+    states,
+    state,
+    username,
+    my_username,
+    realtime,
+    comment_factory,
+    success_label,
+):
+    if not _reviewer_auth_verified():
+        return 'skip'
+
+    approver = command.actor
+    cur_sha = command.commit
+
+    # Ignore WIP PRs
+    is_wip = False
+    for wip_kw in ['WIP', 'TODO', '[WIP]', '[TODO]', '[DO NOT MERGE]']:
+        if state.title.upper().startswith(wip_kw):
+            if realtime:
+                state.add_comment(comments.ApprovalIgnoredWip(
+                    sha=state.head_sha,
+                    wip_keyword=wip_kw,
+                ))
+            is_wip = True
+            break
+    if is_wip:
+        return 'skip'
+
+    # Sometimes, GitHub sends the head SHA of a PR as 0000000
+    # through the webhook. This is called a "null commit", and
+    # seems to happen when GitHub internally encounters a race
+    # condition. Last time, it happened when squashing commits
+    # in a PR. In this case, we just try to retrieve the head
+    # SHA manually.
+    if all(x == '0' for x in state.head_sha):
+        if realtime:
+            state.add_comment(
+                ':bangbang: Invalid head SHA found, retrying: `{}`'
+                .format(state.head_sha)
+            )
+
+        state.head_sha = state.get_repo().pull_request(state.num).head.sha  # noqa
+        state.save()
+
+        assert any(x != '0' for x in state.head_sha)
+
+    if state.approved_by and realtime and username != my_username:
+        for _state in states[state.repo_label].values():
+            if _state.status == 'pending':
+                break
+        else:
+            _state = None
+
+        lines = []
+
+        if state.status in ['failure', 'error']:
+            lines.append('- This pull request previously failed. You should add more commits to fix the bug, or use `retry` to trigger a build again.')  # noqa
+
+        if _state:
+            if state == _state:
+                lines.append('- This pull request is currently being tested. If there\'s no response from the continuous integration service, you may use `retry` to trigger a build again.')  # noqa
+            else:
+                lines.append('- There\'s another pull request that is currently being tested, blocking this pull request: #{}'.format(_state.num))  # noqa
+
+        if lines:
+            lines.insert(0, '')
+        lines.insert(0, ':bulb: This pull request was already approved, no need to approve it again.')  # noqa
+
+        state.add_comment('\n'.join(lines))
+
+    if sha_cmp(cur_sha, state.head_sha):
+        state.approved_by = approver
+        state.try_ = False
+        state.set_status('')
+
+        state.save()
+    elif realtime and username != my_username:
+        if cur_sha:
+            msg = '`{}` is not a valid commit SHA.'.format(cur_sha)
+            state.add_comment(
+                ':scream_cat: {} Please try again with `{}`.'
+                .format(msg, state.head_sha)
+            )
+        else:
+            state.add_comment(comment_factory(
+                sha=state.head_sha,
+                approver=approver,
+                bot=my_username,
+            ))
+            treeclosed = state.blocked_by_closed_tree()
+            if treeclosed:
+                state.add_comment(
+                    ':evergreen_tree: The tree is currently closed for pull requests below priority {}, this pull request will be tested once the tree is reopened'  # noqa
+                    .format(treeclosed)
+                )
+            state.change_labels(success_label)
 
 
 def handle_hook_response(state, hook_cfg, body, extra_data):

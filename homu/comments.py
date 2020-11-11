@@ -45,6 +45,33 @@ class Approved(Comment):
         )
 
 
+class ApprovedAwait(Comment):
+    def __init__(self, bot=None, **args):
+        # Because homu needs to leave a comment for itself to kick off a build,
+        # we need to know the correct botname to use. However, we don't want to
+        # save that botname in our state JSON. So we need a custom constructor
+        # to grab the botname and delegate the rest of the keyword args to the
+        # Comment constructor.
+        super().__init__(**args)
+        self.bot = bot
+
+    params = ["sha", "approver"]
+
+    def render(self):
+        # The comment here is required because Homu wants a full, unambiguous,
+        # pinned commit hash to kick off the build, and this note-to-self is
+        # how it gets it. This is to safeguard against situations where Homu
+        # reloads and another commit has been pushed since the approval.
+        message = ":pushpin: Commit {sha} will be " + \
+            "approved by `{approver}` once CI passes\n\n" + \
+            "<!-- @{bot} r={approver} {sha} await -->"
+        return message.format(
+            sha=self.sha,
+            approver=self.approver,
+            bot=self.bot
+        )
+
+
 class ApprovalIgnoredWip(Comment):
     def __init__(self, wip_keyword=None, **args):
         # We want to use the wip keyword in the message, but not in the json

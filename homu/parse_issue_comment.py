@@ -29,6 +29,13 @@ class IssueCommentCommand:
         return command
 
     @classmethod
+    def approve_await(cls, approver, commit):
+        command = cls('approve-await')
+        command.commit = commit
+        command.actor = approver.lstrip('@')
+        return command
+
+    @classmethod
     def unapprove(cls):
         return cls('unapprove')
 
@@ -183,6 +190,7 @@ def parse_issue_comment(username, body, sha, botname, hooks=[]):
             if i + 1 < len(words) and is_sha(words[i + 1]):
                 approved_sha = words[i + 1]
                 words[i + 1] = None
+                i += 1
 
             approver = word[len('r='):] if word.startswith('r=') else username
 
@@ -190,8 +198,18 @@ def parse_issue_comment(username, body, sha, botname, hooks=[]):
             if approver == 'me':
                 continue
 
-            commands.append(
-                    IssueCommentCommand.approve(approver, approved_sha))
+            await_ci = False
+            if i + 1 < len(words) and words[i + 1] == 'await':
+                await_ci = True
+                words[i + 1] = None
+                i += 1
+
+            if await_ci:
+                commands.append(
+                        IssueCommentCommand.approve_await(approver, approved_sha))  # noqa
+            else:
+                commands.append(
+                        IssueCommentCommand.approve(approver, approved_sha))
 
         elif word == 'r-':
             commands.append(IssueCommentCommand.unapprove())
