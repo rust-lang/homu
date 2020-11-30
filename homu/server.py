@@ -574,6 +574,7 @@ def github():
                 state.save()
 
     elif event_type == 'issue_comment':
+        action = info['action']
         body = info['comment']['body']
         username = info['comment']['user']['login']
         user_id = info['comment']['user']['id']
@@ -581,7 +582,7 @@ def github():
 
         state = g.states[repo_label].get(pull_num)
 
-        if 'pull_request' in info['issue'] and state:
+        if action == 'created' and 'pull_request' in info['issue'] and state:
             state.title = info['issue']['title']
             state.body = info['issue']['body']
 
