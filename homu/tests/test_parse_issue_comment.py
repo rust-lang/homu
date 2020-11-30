@@ -604,3 +604,18 @@ def test_ignore_commands_after_bors_line():
     command = commands[0]
     assert command.action == 'approve'
     assert command.actor == 'jack'
+
+
+def test_in_quote():
+    """
+    Test that a command in a quote (e.g. when replying by e-mail) doesn't
+    trigger.
+    """
+
+    author = "jack"
+    body = """
+    > @bors r+
+    """
+    commands = parse_issue_comment(author, body, commit, "bors")
+
+    assert len(commands) == 0

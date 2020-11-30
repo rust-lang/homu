@@ -158,7 +158,7 @@ def parse_issue_comment(username, body, sha, botname, hooks=[]):
                      re.findall(r'\S+', re.sub(botname_regex, '', x))
                  for x
                  in body.splitlines()
-                 if '@' + botname in x))  # noqa
+                 if '@' + botname in x and not x.lstrip().startswith('>')))  # noqa
 
     commands = []
 
