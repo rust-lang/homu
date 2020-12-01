@@ -141,6 +141,7 @@ class PullReqState:
     num = 0
     priority = 0
     rollup = 0
+    squash = False
     title = ''
     body = ''
     head_ref = ''
@@ -347,7 +348,7 @@ class PullReqState:
     def save(self):
         db_query(
             self.db,
-            'INSERT OR REPLACE INTO pull (repo, num, status, merge_sha, title, body, head_sha, head_ref, base_ref, assignee, approved_by, priority, try_, rollup, delegate) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',  # noqa
+            'INSERT OR REPLACE INTO pull (repo, num, status, merge_sha, title, body, head_sha, head_ref, base_ref, assignee, approved_by, priority, try_, rollup, squash, delegate) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',  # noqa
             [
                 self.repo_label,
                 self.num,
@@ -363,6 +364,7 @@ class PullReqState:
                 self.priority,
                 self.try_,
                 self.rollup,
+                self.squash,
                 self.delegate,
             ])
 
@@ -723,6 +725,20 @@ def parse_commands(body, username, user_id, repo_label, repo_cfg, state,
 
             state.save()
 
+        elif command.action == 'squash':
+            if not _try_auth_verified():
+                continue
+            state.squash = True
+
+            state.save()
+
+        elif command.action == 'unsquash':
+            if not _try_auth_verified():
+                continue
+            state.squash = False
+
+            state.save()
+
         elif command.action == 'force' and realtime:
             if not _try_auth_verified():
                 continue
@@ -1003,6 +1019,29 @@ def create_merge(state, repo_cfg, branch, logger, git_cfg,
                         merge_base_sha, base_sha))
                 except subprocess.CalledProcessError:
                     desc = 'Auto-squashing failed'
+                    comment = ''
+                    ok = False
+            if state.squash:
+                try:
+                    merge_base_sha = subprocess.check_output(
+                        git_cmd(
+                            'merge-base',
+                            base_sha,
+                            state.head_sha)).decode('ascii').strip()
+                    git_editor = os.environ['GIT_EDITOR']
+                    os.environ['GIT_EDITOR'] = "sed -i '2,/^$/s/^pick\b/s/'"
+                    utils.logged_call(git_cmd(
+                        '-c',
+                        'user.name=' + git_cfg['name'],
+                        '-c',
+                        'user.email=' + git_cfg['email'],
+                        'rebase',
+                        '-i',
+                        '--onto',
+                        merge_base_sha, base_sha))
+                    os.environ['GIT_EDITOR'] = git_editor
+                except subprocess.CalledProcessError:
+                    desc = 'Squashing failed'
                     comment = ''
                     ok = False
 
@@ -1736,6 +1775,7 @@ def main():
         priority INTEGER,
         try_ INTEGER,
         rollup INTEGER,
+        squash INTEGER,
         delegate TEXT,
         UNIQUE (repo, num)
     )''')
@@ -1780,6 +1820,10 @@ def main():
         db_query(db, 'SELECT treeclosed_src FROM repos LIMIT 0')
     except sqlite3.OperationalError:
         db_query(db, 'ALTER TABLE repos ADD COLUMN treeclosed_src TEXT')
+    try:
+        db_query(db, 'SELECT squash FROM pull LIMIT 0')
+    except sqlite3.OperationalError:
+        db_query(db, 'ALTER TABLE pull ADD COLUMN squash INT')
 
     for repo_label, repo_cfg in cfg['repo'].items():
         repo_cfgs[repo_label] = repo_cfg
@@ -1797,9 +1841,9 @@ def main():
 
         db_query(
             db,
-            'SELECT num, head_sha, status, title, body, head_ref, base_ref, assignee, approved_by, priority, try_, rollup, delegate, merge_sha FROM pull WHERE repo = ?',   # noqa
+            'SELECT num, head_sha, status, title, body, head_ref, base_ref, assignee, approved_by, priority, try_, rollup, squash, delegate, merge_sha FROM pull WHERE repo = ?',   # noqa
             [repo_label])
-        for num, head_sha, status, title, body, head_ref, base_ref, assignee, approved_by, priority, try_, rollup, delegate, merge_sha in db.fetchall():  # noqa
+        for num, head_sha, status, title, body, head_ref, base_ref, assignee, approved_by, priority, try_, rollup, squash, delegate, merge_sha in db.fetchall():  # noqa
             state = PullReqState(num, head_sha, status, db, repo_label, mergeable_que, gh, repo_cfg['owner'], repo_cfg['name'], repo_cfg.get('labels', {}), repos, repo_cfg.get('test-on-fork'))  # noqa
             state.title = title
             state.body = body
@@ -1811,6 +1855,7 @@ def main():
             state.priority = int(priority)
             state.try_ = bool(try_)
             state.rollup = rollup
+            state.squash = bool(squash)
             state.delegate = delegate
             builders = []
             if merge_sha:

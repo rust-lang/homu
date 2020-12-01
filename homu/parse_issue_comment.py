@@ -71,6 +71,14 @@ class IssueCommentCommand:
         return command
 
     @classmethod
+    def squash(cls):
+        return cls('squash')
+
+    @classmethod
+    def unsquash(cls):
+        return cls('unsquash')
+
+    @classmethod
     def force(cls):
         return cls('force')
 
@@ -226,6 +234,12 @@ def parse_issue_comment(username, body, sha, botname, hooks=[]):
         elif word in WORDS_TO_ROLLUP:
             rollup_value = WORDS_TO_ROLLUP[word]
             commands.append(IssueCommentCommand.rollup(rollup_value))
+
+        elif word == 'squash':
+            commands.append(IssueCommentCommand.squash())
+
+        elif word == 'squash-':
+            commands.append(IssueCommentCommand.unsquash())
 
         elif word == 'force':
             commands.append(IssueCommentCommand.force())
