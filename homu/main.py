@@ -394,7 +394,8 @@ class PullReqState:
 
     def blocked_by_closed_tree(self):
         treeclosed = self.repos[self.repo_label].treeclosed
-        return treeclosed if self.priority < treeclosed else None
+        return (treeclosed if self.priority < treeclosed else None,
+                self.repos[self.repo_label].treeclosed_src)
 
     def start_testing(self, timeout):
         self.test_started = time.time()     # FIXME: Save in the local database
@@ -601,11 +602,11 @@ def parse_commands(body, username, user_id, repo_label, repo_cfg, state,
                         approver=approver,
                         bot=my_username,
                     ))
-                    treeclosed = state.blocked_by_closed_tree()
+                    treeclosed, treeclosed_src = state.blocked_by_closed_tree()
                     if treeclosed:
                         state.add_comment(
-                            ':evergreen_tree: The tree is currently closed for pull requests below priority {}, this pull request will be tested once the tree is reopened'  # noqa
-                            .format(treeclosed)
+                            ':evergreen_tree: The tree is currently [closed]({}) for pull requests below priority {}, this pull request will be tested once the tree is reopened'  # noqa
+                            .format(treeclosed_src, treeclosed)
                         )
                     state.change_labels(LabelEvent.APPROVED)
 
