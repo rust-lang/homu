@@ -120,18 +120,13 @@ class Repository:
         self.treeclosed_src = src
         db_query(
             self.db,
-            'DELETE FROM repos where repo = ?',
-            [self.repo_label]
+            '''
+                UPDATE repos
+                SET treeclosed = ?, treeclosed_src = ?
+                WHERE repo = ?
+            ''',
+            [value, src, self.repo_label]
         )
-        if value > 0:
-            db_query(
-                self.db,
-                '''
-                    INSERT INTO repos (repo, treeclosed, treeclosed_src)
-                    VALUES (?, ?, ?)
-                ''',
-                [self.repo_label, value, src]
-            )
 
     def __lt__(self, other):
         return self.gh < other.gh
