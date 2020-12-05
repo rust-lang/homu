@@ -226,8 +226,8 @@ try_users = []
 
 [repo.rls.github]
 secret = "${HOMU_WEBHOOK_SECRET_RLS}"
-[repo.rls.checks.azure]
-name = "rust-lang.rls"
+[repo.rls.checks.actions]
+name = "bors build finished"
 
 ################
 # vscode-rust  #
