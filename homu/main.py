@@ -921,6 +921,10 @@ def create_merge(state, repo_cfg, branch, logger, git_cfg,
         state.title,
         state.body)
 
+    squash_msg = '{}\n\n{}'.format(
+        state.title,
+        state.body)
+
     desc = 'Merge conflict'
     comment = (
         'This pull request and the master branch diverged in a way that cannot'
@@ -1028,18 +1032,18 @@ def create_merge(state, repo_cfg, branch, logger, git_cfg,
                             'merge-base',
                             base_sha,
                             state.head_sha)).decode('ascii').strip()
-                    git_editor = os.environ['GIT_EDITOR']
-                    os.environ['GIT_EDITOR'] = "sed -i '2,/^$/s/^pick\b/s/'"
+                    utils.logged_call(git_cmd(
+                        'reset',
+                        '--soft',
+                        merge_base_sha))
                     utils.logged_call(git_cmd(
                         '-c',
                         'user.name=' + git_cfg['name'],
                         '-c',
                         'user.email=' + git_cfg['email'],
-                        'rebase',
-                        '-i',
-                        '--onto',
-                        merge_base_sha, base_sha))
-                    os.environ['GIT_EDITOR'] = git_editor
+                        'commit',
+                        '-m',
+                        squash_msg))
                 except subprocess.CalledProcessError:
                     desc = 'Squashing failed'
                     comment = ''
