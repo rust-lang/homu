@@ -45,7 +45,7 @@ class IssueCommentCommand:
     @classmethod
     def delegate(cls, delegate_to):
         command = cls('delegate')
-        command.delegate_to = delegate_to
+        command.delegate_to = delegate_to.lstrip('@')
         return command
 
     @classmethod

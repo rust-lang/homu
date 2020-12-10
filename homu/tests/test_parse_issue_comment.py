@@ -213,6 +213,21 @@ def test_delegate_equals():
     assert command.delegate_to == 'jill'
 
 
+def test_delegate_equals_at_user():
+    """
+    @bors delegate=@{username}
+    """
+
+    author = "jack"
+    body = "@bors delegate=@jill"
+    commands = parse_issue_comment(author, body, commit, "bors")
+
+    assert len(commands) == 1
+    command = commands[0]
+    assert command.action == 'delegate'
+    assert command.delegate_to == 'jill'
+
+
 def test_delegate_minus():
     """
     @bors delegate-
