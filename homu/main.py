@@ -1554,15 +1554,7 @@ def fetch_mergeability(mergeable_que):
                 state.add_comment(
                     ':umbrella: The latest upstream changes{} made this '
                     'pull request unmergeable. Please [resolve the merge conflicts]'  # noqa
-                    '(https://rustc-dev-guide.rust-lang.org/git.html#conflicts).\n\n'  # noqa
-                    '*Note that reviewers usually do not review pull requests '
-                    'until merge conflicts are resolved!* Once you resolve '
-                    'the conflicts, you should change the labels applied by '
-                    'bors to indicate that your PR is ready for review. '
-                    'Post this as a comment to change the labels:\n'
-                    '```\n'
-                    '@rustbot modify labels: +S-waiting-on-review -S-waiting-on-author\n'  # noqa
-                    '```'
+                    '(https://rustc-dev-guide.rust-lang.org/git.html#conflicts).'  # noqa
                     .format(_blame)
                 )
                 state.change_labels(LabelEvent.CONFLICT)
