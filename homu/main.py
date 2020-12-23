@@ -607,7 +607,7 @@ def parse_commands(body, username, user_id, repo_label, repo_cfg, state,
                     treeclosed, treeclosed_src = state.blocked_by_closed_tree()
                     if treeclosed:
                         state.add_comment(
-                            ':evergreen_tree: The tree is currently [closed]({}) for pull requests below priority {}, this pull request will be tested once the tree is reopened'  # noqa
+                            ':evergreen_tree: The tree is currently [closed]({}) for pull requests below priority {}. This pull request will be tested once the tree is reopened.'  # noqa
                             .format(treeclosed_src, treeclosed)
                         )
                     state.change_labels(LabelEvent.APPROVED)
