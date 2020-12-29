@@ -28,6 +28,7 @@ from bottle import (
     redirect,
     abort,
     response,
+    error,
 )
 from threading import Thread
 import sys
@@ -116,6 +117,9 @@ def result(repo_label, pull):
 
 @get('/queue/<repo_label:path>')
 def queue(repo_label):
+    if repo_label not in g.cfg['repo']:
+        abort(404)
+
     logger = g.logger.getChild('queue')
 
     lazy_debug(logger, lambda: 'repo_label: {}'.format(repo_label))
@@ -197,6 +201,9 @@ def queue(repo_label):
 
 @get('/retry_log/<repo_label:path>')
 def retry_log(repo_label):
+    if repo_label not in g.cfg['repo']:
+        abort(404)
+
     logger = g.logger.getChild('retry_log')
 
     lazy_debug(logger, lambda: 'repo_label: {}'.format(repo_label))
@@ -983,6 +990,11 @@ def health():
     return 'OK'
 
 
+@error(404)
+def not_found(error):
+    return g.tpls['404'].render()
+
+
 def redirect_to_canonical_host():
     request_url = urllib.parse.urlparse(request.url)
     redirect_url = request_url
@@ -1023,6 +1035,7 @@ def start(cfg, states, queue_handler, repo_cfgs, repos, logger,
     tpls['queue'] = env.get_template('queue.html')
     tpls['build_res'] = env.get_template('build_res.html')
     tpls['retry_log'] = env.get_template('retry_log.html')
+    tpls['404'] = env.get_template('404.html')
 
     g.cfg = cfg
     g.states = states
