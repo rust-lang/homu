@@ -117,7 +117,7 @@ def result(repo_label, pull):
 
 @get('/queue/<repo_label:path>')
 def queue(repo_label):
-    if repo_label not in g.cfg['repo']:
+    if (repo_label not in g.cfg['repo']) and (repo_label != 'all'):
         abort(404)
 
     logger = g.logger.getChild('queue')
