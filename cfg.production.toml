@@ -304,8 +304,8 @@ try_users = []
 auto = "auto"
 [repo.hashbrown.github]
 secret = "${HOMU_WEBHOOK_SECRET_HASHBROWN}"
-[repo.hashbrown.checks.travis]
-name = "Travis CI - Branch"
+[repo.hashbrown.checks.actions]
+name = "bors build finished"
 
 ##########
 #  MIRI  #
