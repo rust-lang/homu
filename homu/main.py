@@ -914,7 +914,9 @@ def create_merge(state, repo_cfg, branch, logger, git_cfg,
                lambda: "create_merge: attempting merge {} into {} on {!r}"
                .format(state.head_sha, branch, state.get_repo()))
 
-    merge_msg = 'Auto merge of #{} - {}, r={}\n\n{}\n\n{}'.format(
+    merge_msg = 'Auto merge of {}/{}#{} - {}, r={}\n\n{}\n\n{}'.format(
+        state.owner,
+        state.name,
         state.num,
         state.head_ref,
         '<try>' if state.try_ else state.approved_by,
