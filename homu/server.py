@@ -321,7 +321,9 @@ def rollup(user_gh, state, repo_label, repo_cfg, repo):
         state.body = suppress_pings(state.body)
         state.body = suppress_ignore_block(state.body)
 
-        merge_msg = 'Rollup merge of #{} - {}, r={}\n\n{}\n\n{}'.format(
+        merge_msg = 'Rollup merge of {}/{}#{} - {}, r={}\n\n{}\n\n{}'.format(
+            state.owner,
+            state.name,
             state.num,
             state.head_ref,
             state.approved_by,
