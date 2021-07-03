@@ -1554,7 +1554,7 @@ def fetch_mergeability(mergeable_que):
                 state.add_comment(
                     ':umbrella: The latest upstream changes{} made this '
                     'pull request unmergeable. Please [resolve the merge conflicts]'  # noqa
-                    '(https://rustc-dev-guide.rust-lang.org/git.html#conflicts).'  # noqa
+                    '(https://rustc-dev-guide.rust-lang.org/git.html#rebasing-and-conflicts).'  # noqa
                     .format(_blame)
                 )
                 state.change_labels(LabelEvent.CONFLICT)
