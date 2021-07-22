@@ -68,7 +68,7 @@ $ sudo apt-get install python3-venv python3-wheel
 $ python3 -m venv .venv
 $ . .venv/bin/activate
 $ pip install -U pip
-$ git clone https://github.com/rust-ops/homu.git
+$ git clone https://github.com/rust-lang/homu.git
 $ pip install -e homu
 ```
 
@@ -84,30 +84,31 @@ the name of the repository you are configuring homu for.
    config values. 
 
 2. Create a GitHub account that will be used by Homu. You can also use an
-   existing account. In the [account settings][settings], go to "OAuth
-   applications" and create a new application:
+   existing account. In the [developer settings][settings], go to "OAuth
+   Apps" and create a new application:
    - Make note of the "Client ID" and "Client Secret"; you will need to put them in
    your `cfg.toml`.
    - The OAuth Callback URL should be `http://HOST:PORT/callback`.
    - The homepage URL isn't necessary; you could set `http://HOST:PORT/`.
    
-3. Go to the user settings of the GitHub account you created/used in the
+3. Go back to the developer settings of the GitHub account you created/used in the
    previous step. Go to "Personal access tokens". Click "Generate new token" and
    choose the "repo" and "user" scopes. Put the token value in your `cfg.toml`.
    
 4. Add your new GitHub account as a Collaborator to the GitHub repo you are
    setting up homu for. This can be done in repo (NOT user) "Settings", then
-   "Collaborators".
+   "Collaborators". Enable "Write" access.
    
      4.1. Make sure you login as the new GitHub account and that you **accept 
           the collaborator invitation** you just sent! 
 
 5. Add a Webhook to your repository. This is done under repo (NOT user)
-   "Settings", then "Webhooks". Click "Add webhook", the set:
+   "Settings", then "Webhooks". Click "Add webhook", then set:
    - Payload URL: `http://HOST:PORT/github`
    - Content type: `application/json`
    - Secret: The same as `repo.NAME.github.secret` in `cfg.toml`
-   - Events: `Issue Comment`, `Pull Request`, `Push`, `Status`, `Check runs`
+   - Events: click "Let me select individual events", then pick
+       `Issue comments`, `Pull requests`, `Pushes`, `Statuses`, `Check runs`
 
 6. Add a Webhook to your continuous integration service, if necessary. You don't
    need this if using Travis/Appveyor.
@@ -127,7 +128,7 @@ the name of the repository you are configuring homu for.
 7. Go through the rest of your `cfg.toml` and uncomment (and change, if needed)
    parts of the config you'll need.
 
-[settings]: https://github.com/settings/applications
+[settings]: https://github.com/settings/apps
 [travis]: https://travis-ci.org/profile/info
 
 ### How to run
