@@ -372,7 +372,7 @@ class PullReqState:
         issue = self.get_repo().issue(self.num)
 
         self.title = issue.title
-        self.body = suppress_pings(issue.body)
+        self.body = suppress_pings(issue.body or "")
         self.body = suppress_ignore_block(self.body)
 
     def fake_merge(self, repo_cfg):
