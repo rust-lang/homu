@@ -1605,7 +1605,7 @@ def synchronize(repo_label, repo_cfg, logger, gh, states, repos, db, mergeable_q
 
         state = PullReqState(pull.number, pull.head.sha, status, db, repo_label, mergeable_que, gh, repo_cfg['owner'], repo_cfg['name'], repo_cfg.get('labels', {}), repos, repo_cfg.get('test-on-fork'))  # noqa
         state.title = pull.title
-        state.body = suppress_pings(pull.body)
+        state.body = suppress_pings(pull.body or "")
         state.body = suppress_ignore_block(state.body)
         state.head_ref = pull.head.repo[0] + ':' + pull.head.ref
         state.base_ref = pull.base.ref

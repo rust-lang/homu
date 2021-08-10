@@ -318,7 +318,7 @@ def rollup(user_gh, state, repo_label, repo_cfg, repo):
             failures.append(state.num)
             continue
 
-        state.body = suppress_pings(state.body)
+        state.body = suppress_pings(state.body or "")
         state.body = suppress_ignore_block(state.body)
 
         merge_msg = 'Rollup merge of #{} - {}, r={}\n\n{}\n\n{}'.format(
