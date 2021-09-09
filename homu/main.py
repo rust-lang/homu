@@ -1027,6 +1027,15 @@ def create_merge(state, repo_cfg, branch, logger, git_cfg,
                     ok = False
             if state.squash:
                 try:
+                    first_commit = subprocess.check_output(
+                        git_cmd('cherry', 'origin/master',
+                                state.head_sha))[2:42].decode('ascii')
+                    author_name = subprocess.check_output(
+                        git_cmd('log', '-1', '--format="%an"',
+                                first_commit)).decode('ascii').strip()
+                    author_email = subprocess.check_output(
+                        git_cmd('log', '-1', '--format="%ae"',
+                                first_commit)).decode('ascii').strip()
                     merge_base_sha = subprocess.check_output(
                         git_cmd(
                             'merge-base',
@@ -1038,9 +1047,9 @@ def create_merge(state, repo_cfg, branch, logger, git_cfg,
                         merge_base_sha))
                     utils.logged_call(git_cmd(
                         '-c',
-                        'user.name=' + git_cfg['name'],
+                        'user.name=' + author_name,
                         '-c',
-                        'user.email=' + git_cfg['email'],
+                        'user.email=' + author_email,
                         'commit',
                         '-m',
                         squash_msg))
