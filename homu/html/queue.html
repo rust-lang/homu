@@ -28,7 +28,7 @@
             table { border-collapse: collapse; }
             td, th { border-bottom: 1px solid #ddd; padding: 5px 6px; font-size: 13px; text-align: left; vertical-align: baseline; }
             tr:nth-child(even) { background: #eee; }
-            #queue tr > td:nth-child(8) { word-break: break-all; }
+
             a {
                 text-decoration: none;
             }
@@ -65,6 +65,7 @@
                 animation: barber-pole 1s linear infinite;
             }
             .number { text-align: right; }
+            .wrap-text { word-break: break-all; }
 
             /* Make a non-zero priority stand out by making 0 normal and gray,
                and non-zero bold and black. */
@@ -197,7 +198,7 @@
                     </td>
                     <td class="{{state.mergeable}}">{{state.mergeable}}</td>
                     <td>{{state.title}}</td>
-                    <td>{{state.head_ref}}</td>
+                    <td class="wrap-text">{{state.head_ref}}</td>
                     <td>{{state.assignee}}</td>
                     <td>{{state.approved_by}}</td>
                     <td class="priority" data-priority="{{state.priority}}">{{state.priority}}</td>
