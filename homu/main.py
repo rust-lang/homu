@@ -959,6 +959,7 @@ def create_merge(state, repo_cfg, branch, logger, git_cfg,
 
         utils.logged_call(git_cmd('fetch', 'origin', state.base_ref,
                                   'pull/{}/head'.format(state.num)))
+        utils.silent_call(git_cmd('reset', '--hard'))
         utils.silent_call(git_cmd('rebase', '--abort'))
         utils.silent_call(git_cmd('merge', '--abort'))
 
@@ -999,6 +1000,7 @@ def create_merge(state, repo_cfg, branch, logger, git_cfg,
         else:
             utils.logged_call(git_cmd(
                 'checkout',
+                '-f',
                 '-B',
                 'homu-tmp',
                 state.head_sha))
