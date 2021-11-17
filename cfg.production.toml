@@ -156,6 +156,8 @@ name = "stable x86_64-unknown-freebsd-11"
 name = "nightly x86_64-unknown-freebsd-12"
 [repo.libc.checks.cirrus-freebsd-13]
 name = "nightly x86_64-unknown-freebsd-13"
+[repo.libc.checks.cirrus-freebsd-14]
+name = "nightly x86_64-unknown-freebsd-14"
 [repo.libc.labels.approved]   # after homu received `r+`
 remove = ['S-blocked', 'S-waiting-on-author', 'S-waiting-on-bors', 'S-waiting-on-review']
 add = ['S-waiting-on-bors']
