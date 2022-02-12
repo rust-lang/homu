@@ -1,19 +1,23 @@
 import requests
 
-
 RUST_TEAM_BASE = "https://team-api.infra.rust-lang.org/v1/"
+RETRIES = 5
 
 
 def fetch_rust_team(repo_label, level):
     repo = repo_label.replace('-', '_')
     url = RUST_TEAM_BASE + "permissions/bors." + repo + "." + level + ".json"
-    try:
-        resp = requests.get(url)
-        resp.raise_for_status()
-        return resp.json()["github_ids"]
-    except requests.exceptions.RequestException as e:
-        print("error while fetching " + url + ": " + str(e))
-        return []
+    for retry in range(RETRIES):
+        try:
+            resp = requests.get(url)
+            resp.raise_for_status()
+            return resp.json()["github_ids"]
+        except requests.exceptions.RequestException as e:
+            msg = "error while fetching " + url
+            msg += " (try " + retry + "): " + str(e)
+            print(msg)
+            continue
+    return []
 
 
 def verify_level(username, user_id, repo_label, repo_cfg, state, toml_keys,
