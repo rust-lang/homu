@@ -207,7 +207,9 @@
             </tbody>
         </table>
 
+        {% if not multiple %}
         <p><a href="../retry_log/{{repo_label}}">Open retry log</a></p>
+        {% endif %}
 
         <script src="../assets/jquery.min.js"></script>
         <script src="../assets/jquery.dataTables.min.js"></script>
