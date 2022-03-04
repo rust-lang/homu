@@ -315,7 +315,7 @@ def rollup(user_gh, state, repo_label, repo_cfg, repo):
 
     for state in rollup_states:
         if base_ref != state.base_ref:
-            failures.append(state.num)
+            failures.append(state)
             continue
 
         state.body = suppress_pings(state.body or "")
