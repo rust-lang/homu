@@ -386,3 +386,22 @@ try_users = []
 secret = "${HOMU_WEBHOOK_SECRET_SEMVERVER}"
 [repo.semverver.checks.actions]
 name = "bors build finished"
+
+###################
+#  rust-analyzer  #
+###################
+
+[repo.rust-analyzer]
+owner = "rust-lang"
+name = "rust-analyzer"
+timeout = 5400
+
+# Permissions managed through rust-lang/team
+rust_team = true
+reviewers = []
+try_users = []
+
+[repo.rust-analyzer.github]
+secret = "${HOMU_WEBHOOK_SECRET_RUST_ANALYZER}"
+[repo.rust-analyzer.checks.actions]
+name = "bors build finished"
