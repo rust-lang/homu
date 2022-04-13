@@ -402,6 +402,6 @@ reviewers = []
 try_users = []
 
 [repo.rust-analyzer.github]
-secret = "${HOMU_WEBHOOK_SECRET_RLS}"
+secret = "${HOMU_WEBHOOK_SECRET_RUST_ANALYZER}"
 [repo.rust-analyzer.checks.actions]
 name = "bors build finished"
