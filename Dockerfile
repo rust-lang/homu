@@ -1,5 +1,4 @@
-FROM ubuntu:focal
-# We need an older Ubuntu as github3 depends on < Python 3.10 to avoid errors
+FROM ubuntu:jammy
 
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
     python3-pip \

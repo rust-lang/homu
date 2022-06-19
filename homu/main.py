@@ -1627,9 +1627,7 @@ def synchronize(repo_label, repo_cfg, logger, gh, states, repos, db, mergeable_q
                     db,
                     states,
                     sha=comment.original_commit_id,
-                    command_src=comment.to_json()['html_url'],
-                    # FIXME switch to `comment.html_url`
-                    #       after updating github3 to 1.3.0+
+                    command_src=comment.html_url
                 )
 
         for comment in pull.iter_issue_comments():
@@ -1643,9 +1641,7 @@ def synchronize(repo_label, repo_cfg, logger, gh, states, repos, db, mergeable_q
                 my_username,
                 db,
                 states,
-                command_src=comment.to_json()['html_url'],
-                # FIXME switch to `comment.html_url`
-                #       after updating github3 to 1.3.0+
+                command_src=comment.html_url
             )
 
         saved_state = saved_states.get(pull.number)

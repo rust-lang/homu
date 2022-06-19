@@ -478,9 +478,7 @@ def github():
                         g.my_username,
                         g.db,
                         g.states,
-                        command_src=c.to_json()['html_url'],
-                        # FIXME switch to `c.html_url`
-                        #       after updating github3 to 1.3.0+
+                        command_src=c.html_url
                     ) or found
 
                 status = ''
