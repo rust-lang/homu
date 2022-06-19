@@ -14,7 +14,7 @@ def fetch_rust_team(repo_label, level):
             return resp.json()["github_ids"]
         except requests.exceptions.RequestException as e:
             msg = "error while fetching " + url
-            msg += " (try " + retry + "): " + str(e)
+            msg += " (try " + str(retry) + "): " + str(e)
             print(msg)
             continue
     return []
