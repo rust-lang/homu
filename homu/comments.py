@@ -28,7 +28,7 @@ class Approved(Comment):
         super().__init__(**args)
         self.bot = bot
 
-    params = ["sha", "approver"]
+    params = ["sha", "approver", "queue"]
 
     def render(self):
         # The comment here is required because Homu wants a full, unambiguous,
@@ -37,11 +37,13 @@ class Approved(Comment):
         # reloads and another commit has been pushed since the approval.
         message = ":pushpin: Commit {sha} has been " + \
             "approved by `{approver}`\n\n" + \
+            "It is now in the [queue]({queue}) for this repository.\n\n" + \
             "<!-- @{bot} r={approver} {sha} -->"
         return message.format(
             sha=self.sha,
             approver=self.approver,
-            bot=self.bot
+            bot=self.bot,
+            queue=self.queue
         )
 
 
