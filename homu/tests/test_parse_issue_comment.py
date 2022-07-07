@@ -87,8 +87,9 @@ def test_hidden_r_equals():
     author = "bors"
     body = """
     :pushpin: Commit {0} has been approved by `jack`
+    It is now in the [queue]({1}) for this repository.\n\n
     <!-- @bors r=jack {0} -->
-    """.format(commit)
+    """.format(commit, "rust")
 
     commands = parse_issue_comment(author, body, commit, "bors")
 

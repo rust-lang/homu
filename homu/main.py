@@ -603,6 +603,8 @@ def parse_commands(body, username, user_id, repo_label, repo_cfg, state,
                         sha=state.head_sha,
                         approver=approver,
                         bot=my_username,
+                        queue="https://bors.rust-lang.org/homu/queue/{}"
+                        .format(repo_label)
                     ))
                     treeclosed, treeclosed_src = state.blocked_by_closed_tree()
                     if treeclosed:
