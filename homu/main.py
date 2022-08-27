@@ -199,7 +199,9 @@ class PullReqState:
             1 if self.mergeable is False else 0,
             0 if self.approved_by else 1,
             -self.priority,
-            self.rollup,
+            # Cap `rollup` below at -1 (the value for iffy), so iffy and never
+            # are treated the same.
+            max(self.rollup, -1),
             self.num,
         ]
 
