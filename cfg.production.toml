@@ -135,7 +135,7 @@ unless = ['S-blocked', 'S-waiting-on-review']
 [repo.libc]
 owner = "rust-lang"
 name = "libc"
-timeout = 9000
+timeout = 5400
 
 # Permissions managed through rust-lang/team
 rust_team = true
