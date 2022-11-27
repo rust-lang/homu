@@ -236,10 +236,14 @@ def parse_issue_comment(username, body, sha, botname, hooks=[]):
             commands.append(IssueCommentCommand.rollup(rollup_value))
 
         elif word == 'squash':
-            commands.append(IssueCommentCommand.squash())
+            # Squash is broken, prevent its usage.
+            # commands.append(IssueCommentCommand.squash())
+            pass
 
         elif word == 'squash-':
-            commands.append(IssueCommentCommand.unsquash())
+            # Squash is broken, prevent its usage.
+            # commands.append(IssueCommentCommand.unsquash())
+            pass
 
         elif word == 'force':
             commands.append(IssueCommentCommand.force())
