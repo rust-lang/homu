@@ -280,9 +280,7 @@ def test_try_minus():
     body = "@bors try-"
     commands = parse_issue_comment(author, body, commit, "bors")
 
-    assert len(commands) == 1
-    command = commands[0]
-    assert command.action == 'untry'
+    assert len(commands) == 0
 
 
 def test_rollup():
