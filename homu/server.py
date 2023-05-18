@@ -344,9 +344,11 @@ def rollup(user_gh, state, repo_label, repo_cfg, repo):
     body = 'Successful merges:\n\n'
     for x in successes:
         body += ' - #{} ({})\n'.format(x.num, x.title)
-    body += '\nFailed merges:\n\n'
-    for x in failures:
-        body += ' - #{} ({})\n'.format(x.num, x.title)
+
+    if len(failures) != 0:
+        body += '\nFailed merges:\n\n'
+        for x in failures:
+            body += ' - #{} ({})\n'.format(x.num, x.title)
     body += '\nr? @ghost\n@rustbot modify labels: rollup'
 
     # Set web.base_url in cfg to enable
