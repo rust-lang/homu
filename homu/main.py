@@ -664,7 +664,8 @@ def parse_commands(body, username, user_id, repo_label, repo_cfg, state,
             if realtime:
                 state.add_comment(comments.Delegated(
                     delegator=username,
-                    delegate=state.delegate
+                    delegate=state.delegate,
+                    bot=my_username
                 ))
 
         elif command.action == 'undelegate':
@@ -684,7 +685,8 @@ def parse_commands(body, username, user_id, repo_label, repo_cfg, state,
             if realtime:
                 state.add_comment(comments.Delegated(
                     delegator=username,
-                    delegate=state.delegate
+                    delegate=state.delegate,
+                    bot=my_username
                 ))
 
         elif command.action == 'retry' and realtime:
