@@ -66,6 +66,15 @@ class ApprovalIgnoredWip(Comment):
 
 
 class Delegated(Comment):
+    def __init__(self, bot=None, **args):
+        # Because homu needs to leave a comment for the delegated person,
+        # we need to know the correct botname to use. However, we don't want to
+        # save that botname in our state JSON. So we need a custom constructor
+        # to grab the botname and delegate the rest of the keyword args to the
+        # Comment constructor.
+        super().__init__(**args)
+        self.bot = bot
+
     params = ["delegator", "delegate"]
 
     def render(self):
