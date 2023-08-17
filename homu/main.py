@@ -1668,7 +1668,7 @@ def synchronize(repo_label, repo_cfg, logger, gh, states, repos, db, mergeable_q
 
 def process_config(config):
     # Replace environment variables
-    if type(config) == str:
+    if type(config) is str:
         for var in VARIABLES_RE.findall(config):
             try:
                 config = config.replace("${"+var+"}", os.environ[var])
@@ -1680,9 +1680,9 @@ def process_config(config):
 
         return config
     # Recursively apply the processing
-    elif type(config) == list:
+    elif type(config) is list:
         return [process_config(item) for item in config]
-    elif type(config) == dict:
+    elif type(config) is dict:
         return {key: process_config(value) for key, value in config.items()}
     # All other values should be returned as-is
     else:
