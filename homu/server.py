@@ -37,6 +37,7 @@ import traceback
 from retrying import retry
 import random
 import string
+import time
 
 import bottle
 bottle.BaseRequest.MEMFILE_MAX = 1024 * 1024 * 10
@@ -690,6 +691,13 @@ def report_build_res(succ, url, builder, state, logger, repo_cfg):
             )
 
             if state.approved_by and not state.try_:
+                # The set_ref call below sometimes fails with 422 failed to
+                # fast forward. We believe this is a spurious error on GitHub's
+                # side, though it's not entirely clear why. We sleep for 1
+                # minute before trying it after setting the status to try to
+                # increase the likelihood it will work, and also retry the
+                # set_ref a few times.
+                time.sleep(60)
                 state.add_comment(comments.BuildCompleted(
                     approved_by=state.approved_by,
                     base_ref=state.base_ref,
@@ -698,16 +706,17 @@ def report_build_res(succ, url, builder, state, logger, repo_cfg):
                 ))
                 state.change_labels(LabelEvent.SUCCEED)
 
-                def set_ref():
+                def set_ref_inner():
                     utils.github_set_ref(state.get_repo(), 'heads/' +
                                          state.base_ref, state.merge_sha)
                     if state.test_on_fork is not None:
                         utils.github_set_ref(state.get_test_on_fork_repo(),
                                              'heads/' + state.base_ref,
                                              state.merge_sha, force=True)
-                try:
+
+                def set_ref():
                     try:
-                        set_ref()
+                        set_ref_inner()
                     except github3.models.GitHubError:
                         utils.github_create_status(
                             state.get_repo(),
@@ -715,14 +724,26 @@ def report_build_res(succ, url, builder, state, logger, repo_cfg):
                             'success', '',
                             'Branch protection bypassed',
                             context='homu')
+                        set_ref_inner()
+
+                error = None
+                for i in range(0, 5):
+                    try:
                         set_ref()
+                        state.fake_merge(repo_cfg)
+                        error = None
+                    except github3.models.GitHubError as e:
+                        error = e
+                        pass
+                    if error is None:
+                        break
+                    else:
+                        time.sleep(10)
 
-                    state.fake_merge(repo_cfg)
-
-                except github3.models.GitHubError as e:
+                if error is not None:
                     state.set_status('error')
                     desc = ('Test was successful, but fast-forwarding failed:'
-                            ' {}'.format(e))
+                            ' {}'.format(error))
                     utils.github_create_status(state.get_repo(),
                                                state.head_sha, 'error', url,
                                                desc, context='homu')
