@@ -912,6 +912,11 @@ def branch_equal_to_merge(git_cmd, state, branch):
 
 def create_merge(state, repo_cfg, branch, logger, git_cfg,
                  ensure_merge_equal=False):
+    # Add some delay to try to make sure the base repo fetch is accurate.
+    # It seems like in some cases we're getting the previous commit from GH,
+    # e.g., https://github.com/rust-lang/homu/issues/75#issuecomment-1729058969
+    # Hopefully a delay helps.
+    time.sleep(60)
     base_sha = state.get_repo().ref('heads/' + state.base_ref).object.sha
 
     state.refresh()
