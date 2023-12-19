@@ -150,8 +150,6 @@ secret = "${HOMU_WEBHOOK_SECRET_LIBC}"
 
 [repo.libc.checks.actions]
 name = "bors build finished"
-[repo.libc.checks.cirrus-freebsd-12]
-name = "nightly x86_64-unknown-freebsd-12"
 [repo.libc.checks.cirrus-freebsd-13]
 name = "nightly x86_64-unknown-freebsd-13"
 [repo.libc.checks.cirrus-freebsd-14]
