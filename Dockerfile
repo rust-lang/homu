@@ -8,6 +8,10 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-ins
 
 COPY setup.py cfg.production.toml /src/
 COPY homu/ /src/homu/
+COPY requirements.txt /src/
+
+# Pre-install dependencies from a lockfile
+RUN pip3 install -r /src/requirements.txt
 
 # Homu needs to be installed in "editable mode" (-e): when pip installs an
 # application it resets the permissions of all source files to 644, but
