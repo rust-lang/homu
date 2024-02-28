@@ -1042,6 +1042,8 @@ def redirect_to_canonical_host():
         elif redirect_url.path == "/" + prefix:
             redirect_url = redirect_url._replace(path="/")
 
+    print("request_url=", request_url)
+    print("redirect_url=", redirect_url)
     if request_url != redirect_url:
         redirect(urllib.parse.urlunparse(redirect_url), 301)
 
