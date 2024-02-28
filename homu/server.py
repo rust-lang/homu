@@ -1022,8 +1022,9 @@ def redirect_to_canonical_host():
     request_url = urllib.parse.urlparse(request.url)
     redirect_url = request_url
 
-    # Assume that we're always deployed behind something that hides https:// from us.
-    # In production TLS is terminated at ELB, so the actual bors app sees only http:// requests.
+    # Assume that we're always deployed behind something that hides https://
+    # from us.  In production TLS is terminated at ELB, so the actual bors app
+    # sees only http:// requests.
     request_url = redirect_url._replace(
         scheme="https"
     )
@@ -1049,7 +1050,7 @@ def redirect_to_canonical_host():
             redirect_url = redirect_url._replace(path="/")
 
     if request_url != redirect_url:
-        print("redirecting original=" + request_url + " to new=" + redirect_url)
+        print("redirecting original=" + request_url + " to new=" + redirect_url) # noqa
         redirect(urllib.parse.urlunparse(redirect_url), 301)
 
 
