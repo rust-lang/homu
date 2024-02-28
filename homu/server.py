@@ -1022,6 +1022,12 @@ def redirect_to_canonical_host():
     request_url = urllib.parse.urlparse(request.url)
     redirect_url = request_url
 
+    # Assume that we're always deployed behind something that hides https:// from us.
+    # In production TLS is terminated at ELB, so the actual bors app sees only http:// requests.
+    request_url = redirect_url._replace(
+        scheme="https"
+    )
+
     # Disable redirects on the health check endpoint.
     if request_url.path == "/health":
         return
@@ -1042,9 +1048,8 @@ def redirect_to_canonical_host():
         elif redirect_url.path == "/" + prefix:
             redirect_url = redirect_url._replace(path="/")
 
-    print("request_url=", request_url)
-    print("redirect_url=", redirect_url)
     if request_url != redirect_url:
+        print("redirecting original=" + request_url + " to new=" + redirect_url)
         redirect(urllib.parse.urlunparse(redirect_url), 301)
 
 
