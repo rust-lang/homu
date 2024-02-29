@@ -7,3 +7,4 @@
 /main.db
 /cache
 *.pyc
+.vscode/
