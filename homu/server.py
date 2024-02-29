@@ -1050,7 +1050,7 @@ def redirect_to_canonical_host():
             redirect_url = redirect_url._replace(path="/")
 
     if request_url != redirect_url:
-        print("redirecting original=" + request_url + " to new=" + redirect_url) # noqa
+        print("redirecting original=" + request_url.geturl() + " to new=" + redirect_url.geturl())  # noqa
         redirect(urllib.parse.urlunparse(redirect_url), 301)
 
 
