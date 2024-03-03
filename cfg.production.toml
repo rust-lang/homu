@@ -326,27 +326,6 @@ secret = "${HOMU_WEBHOOK_SECRET_MIRI}"
 [repo.miri.checks.actions]
 name = "bors build finished"
 
-###############
-#  MEASUREME  #
-###############
-
-[repo.measureme]
-owner = "rust-lang"
-name = "measureme"
-timeout = 7200
-
-# Permissions managed through rust-lang/team
-rust_team = true
-reviewers = []
-try_users = []
-
-[repo.measureme.branch]
-auto = "auto"
-[repo.measureme.github]
-secret = "${HOMU_WEBHOOK_SECRET_MEASUREME}"
-[repo.measureme.checks.actions]
-name = "bors build finished"
-
 ############
 #  Crater  #
 ############
