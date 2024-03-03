@@ -1625,6 +1625,20 @@ def synchronize(repo_label, repo_cfg, logger, gh, states, repos, db, mergeable_q
         state.set_mergeable(None)
         state.assignee = pull.assignee.login if pull.assignee else ''
 
+        parse_commands(
+            pull.body,
+            pull.user.login,
+            pull.user.id,
+            repo_label,
+            repo_cfg,
+            state,
+            my_username,
+            db,
+            states,
+            sha=pull.base.sha,
+            command_src=pull.to_json()['html_url'],
+        )
+
         for comment in pull.iter_comments():
             if comment.original_commit_id == pull.head.sha:
                 parse_commands(
