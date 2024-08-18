@@ -306,7 +306,7 @@ secret = "${HOMU_WEBHOOK_SECRET_HASHBROWN}"
 name = "bors build finished"
 
 ##########
-#  MIRI  #
+#  Miri  #
 ##########
 
 [repo.miri]
@@ -325,6 +325,30 @@ auto = "auto"
 secret = "${HOMU_WEBHOOK_SECRET_MIRI}"
 [repo.miri.checks.actions]
 name = "bors build finished"
+
+[repo.miri.labels.approved]   # after homu received `r+`
+remove = ['S-blocked', 'S-waiting-on-author', 'S-waiting-on-bors', 'S-waiting-on-review']
+add = ['S-waiting-on-bors']
+[repo.miri.labels.rejected]   # after homu received `r-`
+remove = ['S-blocked', 'S-waiting-on-author', 'S-waiting-on-bors', 'S-waiting-on-review']
+add = ['S-waiting-on-author']
+[repo.miri.labels.failed]     # test failed (maybe spurious, so fall back to -on-review)
+remove = ['S-blocked', 'S-waiting-on-author', 'S-waiting-on-bors', 'S-waiting-on-review']
+add = ['S-waiting-on-review']
+[repo.miri.labels.timed_out]   # test timed out after 4 hours (almost always spurious, let reviewer retry)
+remove = ['S-blocked', 'S-waiting-on-author', 'S-waiting-on-bors', 'S-waiting-on-review']
+add = ['S-waiting-on-review']
+[repo.miri.labels.try_failed]  # try-build failed (almost always legit, tell author to fix the PR)
+remove = ['S-waiting-on-review']
+add = ['S-waiting-on-author']
+[repo.miri.labels.pushed]      # user pushed a commit after `r+`/`try`
+remove = ['S-waiting-on-bors', 'S-waiting-on-author']
+add = ['S-waiting-on-review']
+unless = ['S-blocked']
+[repo.miri.labels.conflict]    # a merge conflict is detected (tell author to rebase)
+remove = ['S-waiting-on-bors']
+add = ['S-waiting-on-author']
+unless = ['S-blocked', 'S-waiting-on-review']
 
 ###############
 #  MEASUREME  #
