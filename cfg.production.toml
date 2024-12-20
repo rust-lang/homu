@@ -31,7 +31,7 @@ remove_path_prefixes = ["homu"]
 [repo.rust]
 owner = "rust-lang"
 name = "rust"
-timeout = 15300
+timeout = 21600 # 6 hours
 
 # Permissions managed through rust-lang/team
 rust_team = true
