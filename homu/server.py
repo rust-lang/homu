@@ -118,8 +118,13 @@ def result(repo_label, pull):
 
 @get('/queue/<repo_label:path>')
 def queue(repo_label):
-    if repo_label not in g.cfg['repo'] and repo_label != 'all':
-        abort(404)
+
+    if repo_label == 'all':
+        labels = g.repos.keys()
+    else:
+        labels = repo_label.split('+')
+        if any(label not in g.cfg['repo'] for label in labels):
+            abort(404)
 
     logger = g.logger.getChild('queue')
 
@@ -127,16 +132,14 @@ def queue(repo_label):
 
     single_repo_closed = None
     treeclosed_src = None
-    if repo_label == 'all':
-        labels = g.repos.keys()
-        multiple = True
-        repo_url = None
-    else:
-        labels = repo_label.split('+')
-        multiple = len(labels) > 1
-        if repo_label in g.repos and g.repos[repo_label].treeclosed >= 0:
+    repo_url = None
+    multiple = len(labels) > 1
+
+    if not multiple:
+        if g.repos[repo_label].treeclosed >= 0:
             single_repo_closed = g.repos[repo_label].treeclosed
             treeclosed_src = g.repos[repo_label].treeclosed_src
+
         repo_url = 'https://github.com/{}/{}'.format(
             g.cfg['repo'][repo_label]['owner'],
             g.cfg['repo'][repo_label]['name'])
