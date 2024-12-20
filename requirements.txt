@@ -14,5 +14,5 @@ toml==0.10.2
 uritemplate==4.1.1
 uritemplate.py==3.0.2
 urllib3==2.2.1
-waitress==3.0.0
+waitress==3.0.1
 wheel==0.34.2
