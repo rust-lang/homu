@@ -121,6 +121,43 @@
             #announcement a:visited {
                 color: #00f;
             }
+
+            /* Make the rollup button vs sync button clear distinct, because sync requires some elaborate procedure. */
+            button#expand-rollup {
+                background-color: darkcyan;
+                border: 2px solid #000000;
+                border-radius: 4px;
+                box-shadow: rgba(0, 0, 0, .1) 0 2px 4px 0;
+                box-sizing: border-box;
+                color: #fff;
+                font-size: 16px;
+                font-weight: 400;
+                padding: 10px 25px;
+                text-align: center;
+            }
+
+            button#expand-rollup:hover {
+                box-shadow: rgba(0, 0, 0, .15) 0 3px 9px 0;
+                transform: translateY(-2px);
+            }
+
+            button#synch {
+                background-color: red;
+                border: 2px solid #000000;
+                border-radius: 4px;
+                box-shadow: rgba(0, 0, 0, .1) 0 2px 4px 0;
+                box-sizing: border-box;
+                color: #fff;
+                font-size: 16px;
+                font-weight: 400;
+                padding: 10px 25px;
+                text-align: center;
+            }
+
+            button#synch:hover {
+                box-shadow: rgba(0, 0, 0, .15) 0 3px 9px 0;
+                transform: translateY(-2px);
+            }
         </style>
     </head>
     <body>
@@ -134,6 +171,8 @@
             <button type="button" id="expand-rollup">Create a rollup</button>
             <button type="button" id="synch">Synchronize</button>
         </p>
+
+        <p style="color: #ff6347">Caution: Synchronization has some caveats. Please follow the steps described in <a href="https://forge.rust-lang.org/infra/docs/bors/queue-resync.html"><i>Fixing inconsistencies in the bors queue</i></a>.</p>
 
         <div id="actual-rollup" class="hide">
             <p>This will create a new pull request consisting of <span id="checkbox-count">0</span> PRs.</p>
