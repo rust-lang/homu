@@ -41,6 +41,35 @@ DEFAULT_TEST_TIMEOUT = 3600 * 10
 
 VARIABLES_RE = re.compile(r'\${([a-zA-Z_]+)}')
 
+# Pattern for matching an auto-linked GitHub username.
+#
+# This is the behavior used by GitHub when detecting usernames, as deduced from
+# the username constraints for new accounts and testing in their Markdown
+# renderer:
+# - Usernames are auto-linked with an @ prefix.
+# - Usernames can only contain alphanumeric characters or hyphens and must be
+#   between 1 and 39 characters (inclusive): /@[A-Za-z0-9\-]{1,39}/
+# - Usernames cannot start with hyphen: /@[A-Za-z0-9][A-Za-z0-9\-]{,38}/
+# - A username preceded by an alphanumeric character or underscore is not
+#   auto-linked: /(?<![A-Za-z0-9_])/
+# - A username followed by an underscore or slash is not auto-linked:
+#   /(?![A-Za-z0-9\-_\/])/
+#
+# Although usernames cannot contain consecutive hyphens or end with a hyphen,
+# GitHub still auto-links such patterns.
+#
+# The logic for username auto-linking appears to not be open source.
+# github-markup (https://github.com/github/markup), the markup renderer used by
+# GitHub, does not contain this logic, nor do its dependencies. Their README
+# says this is part of their "special sauce".
+#
+# This pattern does not handle Markdown code blocks.
+GITHUB_USERNAME_RE = re.compile(
+                    r'(?<![A-Za-z0-9_])'
+                    r'(@[A-Za-z0-9][A-Za-z0-9\-]{,38})'
+                    r'(?![A-Za-z0-9\-_/])'
+                )
+
 IGNORE_BLOCK_START = '<!-- homu-ignore:start -->'
 IGNORE_BLOCK_END = '<!-- homu-ignore:end -->'
 IGNORE_BLOCK_RE = re.compile(
@@ -56,7 +85,7 @@ global_cfg = {}
 # Replace @mention with `@mention` to suppress pings in merge commits.
 # Note: Don't replace non-mentions like "email@gmail.com".
 def suppress_pings(text):
-    return re.sub(r'\B(@\S+)', r'`\g<1>`', text)  # noqa
+    return GITHUB_USERNAME_RE.sub(r'`\g<1>`', text)
 
 
 # Replace any text between IGNORE_BLOCK_START and IGNORE_BLOCK_END
