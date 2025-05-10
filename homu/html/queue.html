@@ -150,10 +150,7 @@
 
         <p>
             <button type="button" id="expand-rollup">Create a rollup</button>
-            <button type="button" id="synch">Synchronize</button>
         </p>
-
-        <p style="color: #ff6347">Caution: Synchronization has some caveats. Please follow the steps described in <a href="https://forge.rust-lang.org/infra/docs/bors/queue-resync.html"><i>Fixing inconsistencies in the bors queue</i></a>.</p>
 
         <div id="actual-rollup" class="hide">
             <p>This will create a new pull request consisting of <span id="checkbox-count">0</span> PRs.</p>
@@ -229,6 +226,11 @@
         </table>
 
         <p><a href="../retry_log/{{repo_label}}">Open retry log</a></p>
+
+        <p>
+            <button type="button" id="synch">Synchronize</button>
+        </p>
+        <p style="color: #ff6347">Caution: Synchronization has some caveats. Please follow the steps described in <a href="https://forge.rust-lang.org/infra/docs/bors/queue-resync.html"><i>Fixing inconsistencies in the bors queue</i></a>.</p>
 
         <script src="../assets/jquery.min.js"></script>
         <script src="../assets/jquery.dataTables.min.js"></script>
