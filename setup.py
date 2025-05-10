@@ -11,7 +11,7 @@ setup(
 
     packages=['homu'],
     install_requires=[
-        'github3.py==0.9.6',
+        'github3.py==3.2.0',
         'toml',
         'Jinja2',
         'requests',
