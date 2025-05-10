@@ -8,7 +8,10 @@ from . import comments
 from . import utils
 from .parse_issue_comment import parse_issue_comment
 from .auth import verify as verify_auth
-from .utils import lazy_debug
+from .utils import (
+    iso_utc_now,
+    lazy_debug,
+)
 import logging
 from threading import Thread, Lock, Timer
 import time
@@ -418,6 +421,7 @@ class PullReqState:
     def timed_out(self):
         print('* Test timed out: {}'.format(self))
 
+        merge_sha = self.merge_sha
         self.merge_sha = ''
         self.save()
         self.set_status('failure')
@@ -429,7 +433,10 @@ class PullReqState:
             '',
             'Test timed out',
             context='homu')
-        self.add_comment(comments.TimedOut())
+        self.add_comment(comments.TimedOut(
+            merge_sha=merge_sha,
+            ended_at=iso_utc_now(),
+        ))
         self.change_labels(LabelEvent.TIMED_OUT)
 
     def record_retry_log(self, src, body):
@@ -1403,11 +1410,13 @@ def start_build(state, repo_cfgs, buildbot_slots, logger, db, git_cfg):
         state.add_comment(comments.TryBuildStarted(
             head_sha=state.head_sha,
             merge_sha=state.merge_sha,
+            started_at=iso_utc_now(),
         ))
     else:
         state.add_comment(comments.BuildStarted(
             head_sha=state.head_sha,
             merge_sha=state.merge_sha,
+            started_at=iso_utc_now(),
         ))
 
     return True
