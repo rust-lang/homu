@@ -80,6 +80,7 @@ unless = ['S-blocked', 'S-waiting-on-crater', 'S-waiting-on-team', 'S-waiting-on
 
 [repo.rust.labels.succeed]
 add = ['merged-by-bors']
+remove = ['S-waiting-on-bors']
 
 [repo.rust.labels.rollup_made]
 add = ['rollup']
