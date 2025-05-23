@@ -38,10 +38,6 @@ rust_team = true
 reviewers = []
 try_users = []
 
-[repo.rust.test-on-fork]
-owner = "rust-lang-ci"
-name = "rust"
-
 [repo.rust.github]
 secret = "${HOMU_WEBHOOK_SECRET_RUST}"
 [repo.rust.checks.actions]
