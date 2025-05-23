@@ -29,6 +29,9 @@ jobs:
       - name: Ensure the code passes lints
         run: flake8 homu/
 
+      - name: Preinstall pinned Python dependencies
+        run: pip install -r requirements.txt
+
       - name: Install homu on the builder
         run: pip install -e .
 
