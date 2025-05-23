@@ -20,10 +20,10 @@ setup(
         'retrying',
     ],
     setup_requires=[
-        'pytest-runner',
+        'pytest-runner<8',
     ],
     tests_require=[
-        'pytest',
+        'pytest<8',
     ],
     package_data={
         'homu': [
