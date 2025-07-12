@@ -225,13 +225,13 @@ def parse_issue_comment(username, body, sha, botname, hooks=[]):
         elif word == 'retry':
             commands.append(IssueCommentCommand.retry())
 
-        elif word == 'try':
-            commands.append(IssueCommentCommand.try_())
+        # elif word == 'try':
+        #     commands.append(IssueCommentCommand.try_())
 
-        elif word == 'try-':
+        # elif word == 'try-':
             # Try- is broken, prevent its usage.
             # commands.append(IssueCommentCommand.untry())
-            pass
+            # pass
 
         elif word in WORDS_TO_ROLLUP:
             rollup_value = WORDS_TO_ROLLUP[word]
