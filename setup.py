@@ -24,6 +24,7 @@ setup(
     ],
     tests_require=[
         'pytest<8',
+        'typing_extensions<4.14'
     ],
     package_data={
         'homu': [
