@@ -947,7 +947,7 @@ def create_merge(state, repo_cfg, branch, logger, git_cfg,
         ' you can resolve the conflict following these steps:\n\n'
         '1. `git checkout {branch}` *(switch to your branch)*\n'
         '2. `git fetch upstream master` *(retrieve the latest master)*\n'
-        '3. `git rebase upstream/master -p` *(rebase on top of it)*\n'
+        '3. `git rebase upstream/master --rebase-merges` *(rebase on top of it)*\n' # noqa
         '4. Follow the on-screen instruction to resolve conflicts'
         ' (check `git status` if you got lost).\n'
         '5. `git push self {branch} --force-with-lease` *(update this PR)*\n\n'
