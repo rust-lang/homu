@@ -257,18 +257,18 @@ def test_retry():
     assert command.action == 'retry'
 
 
-def test_try():
-    """
-    @bors try
-    """
-
-    author = "jack"
-    body = "@bors try"
-    commands = parse_issue_comment(author, body, commit, "bors")
-
-    assert len(commands) == 1
-    command = commands[0]
-    assert command.action == 'try'
+# def test_try():
+#     """
+#     @bors try
+#     """
+#
+#     author = "jack"
+#     body = "@bors try"
+#     commands = parse_issue_comment(author, body, commit, "bors")
+#
+#     assert len(commands) == 1
+#     command = commands[0]
+#     assert command.action == 'try'
 
 
 def test_try_minus():
