@@ -102,6 +102,17 @@
                 background: #F0DE57;
                 border-color: #8C7E14;
             }
+            .riskiness_low {
+                color: #01CE01;
+            }
+            .riskiness_medium {
+                color: #822a00;
+                font-weight: 600;
+            }
+            .riskiness_high {
+                color: #de0000;
+                font-weight: 900;
+            }
 
             .sorting_asc:after { content: " ▲"; }
             .sorting_desc:after { content: " ▼"; }
@@ -154,6 +165,7 @@
 
         <div id="actual-rollup" class="hide">
             <p>This will create a new pull request consisting of <span id="checkbox-count">0</span> PRs.</p>
+            <p>Based on the number of PRs and their rollup statuses, this rollup is considered <span id="riskiness">not risky</span>.</p>
             <p>A rollup is useful for shortening the queue, but jumping the queue is unfair to older PRs who have waited too long.</p>
             <p>When creating a real rollup, see <a href="https://forge.rust-lang.org/release/rollups.html">this instruction</a> for reference.</p>
             <p>
@@ -245,9 +257,38 @@
             ];
 
             document.getElementById('expand-rollup').onclick = function() {
-                var checkboxCount = document.querySelectorAll('#queue tbody input[type=checkbox]:checked').length;
+                var els = document.querySelectorAll('#queue tbody input[type=checkbox]:checked');
+                var checkboxCount = els.length;
                 document.getElementById('checkbox-count').innerHTML = checkboxCount;
                 document.getElementById('actual-rollup').className = '';
+
+                var value = 0;
+                for (var i = 0; i < els.length; i++) {
+                    var rollupClassName = els[i].parentNode.parentNode.children[10].className;
+                    if (rollupClassName === "rollup_always") {
+                    } else if (rollupClassName === "rollup_iffy") {
+                        value += 2;
+                    } else { // nothing or "rollup_maybe"
+                        value += 1;
+                    }
+                }
+                value = (value / 8) + (Math.max((checkboxCount - 8), 0) / 8);
+
+                var riskiness = 'not risky';
+                var riskinessClass = 'riskiness_low';
+                if (value > 0 && value <= 0.5) {
+                    riskiness = 'acceptably risky';
+                } else if (value <= 1.0) {
+                    riskiness = 'somewhat risky';
+                } else if (value <= 2.0) {
+                    riskinessClass = 'riskiness_medium';
+                    riskiness = 'risky';
+                } else if (value > 2.0) {
+                    riskinessClass = 'riskiness_high';
+                    riskiness = '⚠️very risky⚠️';
+                }
+                document.getElementById('riskiness').innerHTML = riskiness;
+                document.getElementById('riskiness').className = riskinessClass;
             };
 
             document.getElementById('cancel-rollup').onclick = function() {
