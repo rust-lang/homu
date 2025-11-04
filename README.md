@@ -15,12 +15,12 @@ integration service such as [Travis CI], [Appveyor] or [Buildbot].
 
 Let's take Travis CI as an example. If you send a pull request to a repository,
 Travis CI instantly shows you the test result, which is great. However, after
-several other pull requests are merged into the `master` branch, your pull
-request can *still* break things after being merged into `master`. The
+several other pull requests are merged into the default branch, your pull
+request can *still* break things after being merged into the default branch. The
 traditional continuous integration solutions don't protect you from this.
 
 In fact, that's why they provide the build status badges. If anything pushed to
-`master` is completely free from any breakage, those badges will **not** be
+the default branch is completely free from any breakage, those badges will **not** be
 necessary, as they will always be green. The badges themselves prove that there
 can still be some breakages, even when continuous integration services are used.
 
@@ -30,7 +30,7 @@ merge*, not just after the pull request is received. You can manually click the
 automate this process. It listens to the pull request comments, waiting for an
 approval comment from one of the configured reviewers. When the pull request is
 approved, Homu tests it using your favorite continuous integration service, and
-only when it passes all the tests, it is merged into `master`.
+only when it passes all the tests, it is merged into the default branch.
 
 Note that Homu is **not** a replacement of Travis CI, Buildbot or Appveyor. It
 works on top of them. Homu itself doesn't have the ability to test pull

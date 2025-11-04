@@ -938,16 +938,17 @@ def create_merge(state, repo_cfg, branch, logger, git_cfg,
 
     desc = 'Merge conflict'
     comment = (
-        'This pull request and the master branch diverged in a way that cannot'
-        ' be automatically merged. Please rebase on top of the latest master'
+        'This pull request and the default branch diverged in '
+        'a way that cannot'
+        ' be automatically merged. Please rebase on top of the latest default'
         ' branch, and let the reviewer approve again.\n'
         '\n'
         '<details><summary>How do I rebase?</summary>\n\n'
         'Assuming `self` is your fork and `upstream` is this repository,'
         ' you can resolve the conflict following these steps:\n\n'
         '1. `git checkout {branch}` *(switch to your branch)*\n'
-        '2. `git fetch upstream master` *(retrieve the latest master)*\n'
-        '3. `git rebase upstream/master -p` *(rebase on top of it)*\n'
+        '2. `git fetch upstream HEAD` *(retrieve the latest HEAD)*\n'
+        '3. `git rebase upstream/HEAD -p` *(rebase on top of it)*\n'
         '4. Follow the on-screen instruction to resolve conflicts'
         ' (check `git status` if you got lost).\n'
         '5. `git push self {branch} --force-with-lease` *(update this PR)*\n\n'
@@ -1335,7 +1336,7 @@ def start_build(state, repo_cfgs, buildbot_slots, logger, db, git_cfg):
                     continue
                 builders += ['status-' + key]
                 # We have an optional fast path if the Travis test passed
-                # for a given commit and master is unchanged, we can do
+                # for a given commit and main is unchanged, we can do
                 # a direct push.
                 if context == 'continuous-integration/travis-ci/push':
                     found_travis_context = True
