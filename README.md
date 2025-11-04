@@ -108,7 +108,7 @@ the name of the repository you are configuring homu for.
    - Content type: `application/json`
    - Secret: The same as `repo.NAME.github.secret` in `cfg.toml`
    - Events: click "Let me select individual events", then pick
-       `Issue comments`, `Pull requests`, `Pushes`, `Statuses`, `Check runs`
+       `Issue comments`, `Pull requests`, `Pushes`, `Statuses`, `Check runs` and `Pull request review comments`
 
 6. Add a Webhook to your continuous integration service, if necessary. You don't
    need this if using Travis/Appveyor.
