@@ -6,6 +6,14 @@ import sys
 import traceback
 import requests
 import time
+import datetime
+
+
+def iso_utc_now():
+    return datetime.datetime \
+            .utcnow() \
+            .replace(tzinfo=datetime.timezone.utc, microsecond=0) \
+            .isoformat()
 
 
 def github_set_ref(repo, ref, sha, *, force=False, auto_create=True, retry=1):

@@ -15,7 +15,10 @@ from .main import (
 )
 from . import comments
 from . import utils
-from .utils import lazy_debug
+from .utils import (
+    iso_utc_now,
+    lazy_debug,
+)
 import github3
 import jinja2
 import requests
@@ -619,6 +622,8 @@ def github():
         except ValueError:
             return 'OK'
 
+        sha = info['sha']
+
         status_name = ""
         if 'status' in repo_cfg:
             for name, value in repo_cfg['status'].items():
@@ -634,7 +639,7 @@ def github():
             if row['name'] == state.base_ref:
                 return 'OK'
 
-        report_build_res(info['state'] == 'success', info['target_url'],
+        report_build_res(info['state'] == 'success', sha, info['target_url'],
                          'status-' + status_name, state, logger, repo_cfg)
 
     elif event_type == 'check_run':
@@ -642,6 +647,8 @@ def github():
             state, repo_label = find_state(info['check_run']['head_sha'])
         except ValueError:
             return 'OK'
+
+        sha = info['check_run']['head_sha']
 
         current_run_name = info['check_run']['name']
         checks_name = None
@@ -666,6 +673,7 @@ def github():
 
         report_build_res(
             info['check_run']['conclusion'] == 'success',
+            sha,
             info['check_run']['details_url'],
             'checks-' + checks_name,
             state, logger, repo_cfg,
@@ -674,7 +682,7 @@ def github():
     return 'OK'
 
 
-def report_build_res(succ, url, builder, state, logger, repo_cfg):
+def report_build_res(succ, sha, url, builder, state, logger, repo_cfg):
     lazy_debug(logger,
                lambda: 'build result {}: builder = {}, succ = {}, current build_res = {}'  # noqa
                        .format(state, builder, succ,
@@ -703,6 +711,7 @@ def report_build_res(succ, url, builder, state, logger, repo_cfg):
                     base_ref=state.base_ref,
                     builders={k: v["url"] for k, v in state.build_res.items()},
                     merge_sha=state.merge_sha,
+                    ended_at=iso_utc_now(),
                 ))
                 state.change_labels(LabelEvent.SUCCEED)
 
@@ -753,6 +762,7 @@ def report_build_res(succ, url, builder, state, logger, repo_cfg):
                 state.add_comment(comments.TryBuildCompleted(
                     builders={k: v["url"] for k, v in state.build_res.items()},
                     merge_sha=state.merge_sha,
+                    ended_at=iso_utc_now(),
                 ))
                 state.change_labels(LabelEvent.TRY_SUCCEED)
 
@@ -768,12 +778,16 @@ def report_build_res(succ, url, builder, state, logger, repo_cfg):
                 state.add_comment(comments.TryBuildFailed(
                     builder_url=url,
                     builder_name=builder,
+                    merge_sha=sha,
+                    ended_at=iso_utc_now(),
                 ))
                 state.change_labels(LabelEvent.TRY_FAILED)
             else:
                 state.add_comment(comments.BuildFailed(
                     builder_url=url,
                     builder_name=builder,
+                    merge_sha=sha,
+                    ended_at=iso_utc_now(),
                 ))
                 state.change_labels(LabelEvent.FAILED)
 
@@ -797,6 +811,8 @@ def buildbot():
 
             if not props['revision']:
                 continue
+
+            sha = props['revision']
 
             try:
                 state, repo_label = find_state(props['revision'])
@@ -876,7 +892,7 @@ def buildbot():
                 else:
                     logger.error('Corrupt payload from Buildbot')
 
-            report_build_res(build_succ, url, info['builderName'],
+            report_build_res(build_succ, sha, url, info['builderName'],
                              state, logger, repo_cfg)
 
         elif row['event'] == 'buildStarted':
