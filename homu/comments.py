@@ -82,7 +82,7 @@ class Delegated(Comment):
             ':v: @{delegate}, you can now approve this pull request!\n\n' + \
             'If @{delegator} told you to "`r=me`" after making some ' + \
             'further change, please make that change, then do ' + \
-            '`@{bot} r=@{delegator}`'
+            '`@{bot} r={delegator}`'
         return message.format(
             delegate=self.delegate,
             bot=self.bot,
