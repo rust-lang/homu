@@ -921,11 +921,14 @@ def create_merge(state, repo_cfg, branch, logger, git_cfg,
 
     state.refresh()
 
+    repo = state.get_repo()
     lazy_debug(logger,
                lambda: "create_merge: attempting merge {} into {} on {!r}"
-               .format(state.head_sha, branch, state.get_repo()))
+               .format(state.head_sha, branch, repo))
 
-    merge_msg = 'Auto merge of #{} - {}, r={}\n\n{}\n\n{}'.format(
+    merge_msg = 'Auto merge of {}/{}#{} - {}, r={}\n\n{}\n\n{}'.format(
+        repo.owner.login,
+        repo.name,
         state.num,
         state.head_ref,
         '<try>' if state.try_ else state.approved_by,
